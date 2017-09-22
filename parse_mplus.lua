@@ -240,9 +240,286 @@ local function tableLength(t)
 		length = length + 1
 	end
 	return length
-end -- tableLength()
+end -- tableLength(t)
+
+-- Quick function to return if a table is empty or not
+local function isTableEmpty(t)
+	local _
+	if t then
+		for _ in pairs(t) do
+			return false
+		end
+	end
+	return true
+end -- isTableEmpty(t)
 
 -- ## End Generic Functions
+-- ################################################################
+
+-- ################################################################
+-- ## Function: Read Configuration File
+-- ## Also optable definition
+
+--[[ Syntax
+	Commments: Line starts with # or ;
+	Boolean: OPTIONNAME = true or false (or T or F)
+	Single value: OPTIONAME = value
+	Multiple values: OPTIONNAME = value1,value2,value3,value4
+	Option with one suboption (unused): OPTIONNAME suboption = value
+	Option with two suboptions: OPTIONNAME suboption1,suboption2 = value
+	Option names cannot have spaces.
+	Values and suboptions can have spaces.
+	Values cannot have commas or equal signs.
+	Spaces are otherwise trimmed.
+--]]
+
+-- Contains configurable options and their defaults
+-- Configure with the .conf configuration file
+-- Note: Hash keys must be lowercase
+local optable = {
+	["csv_class_num_header"] = true, -- Show number of classes in CSV output
+	["csv_section_header"] = true, -- Show section header in CSV output
+	["csv_table_seperator"] = false, -- Separates tables on CSV output (given string to use for seperator)
+	["cptable_default_category"] = 2, -- Default category if variable not defined using "remap varname,cat = newname"
+	["citable_default_category"] = 2, -- " 			"
+
+	["lcmtable_output_columns"] = { 
+		["# of free parameters"] = true,
+		["sample-size adjusted bic"] = true,
+		["entropy"] = true,
+		["lmr p value"] = true,
+		["overall bp chi-sq"] = true,
+		["avg. bp"] = true,
+		["h0 value"] = true,
+		["approx p-value"] = false
+	},
+	
+	-- default: S.E.
+	["cptable_output_columns"] = { 
+		["estimate"] = false,
+		["s.e."] = true,
+		["est./s.e."] = false,
+		["two-tailed p-Value"] = false
+	},
+	-- default: Lower CI Bound 2.5%, Estimate, Upper CI Bound 2.5%
+	["citable_output_columns"] = { 
+		["lower ci bound 0.5%"] = false,
+		["lower ci bound 2.5%"] = true,
+		["lower ci bound 5%"] = false,
+		["estimate"] = true,
+		["upper ci bound 5%"] = false,
+		["upper ci bound 2.5%"] = true,
+		["upper ci bound 0.5%"] = false
+	},
+	-- default: Mean, S.E., overall, overall_chi_sq, overall_p_value
+	["bchtable_output_columns"] = { 
+		["mean"] = true,
+		["s.e."] = true,
+		["overall"] = true,
+		["overall_chi_sq"] = true,
+		["overall_p_value"] = true,
+		["classx_vs_classy"] = false,
+		["classx_vs_classy_chi_sq"] = false,
+		["classx_vs_classy_p_value"] = false
+	},
+	-- default: Estimate, S.E., Two-Tailed P-Value, #byrefclass
+	["r3step_output_columns"] = {
+		["estimate"] = true,
+		["s.e."] = true,
+		["est./s.e."] = false,
+		["two-tailed p-value"] = true,
+		["#byrefclass"] = true -- output one table per reference class / parameterization
+	},
+	-- Order of variables outputted in CSV table and R plot
+	["category_output_order"] = {},
+	-- remap categories of a variable to individual variable names
+	-- Note: must start with "remap"
+	["remap_categories"] = {}
+}
+
+-- lookup table for remapped variable names<->categories of that variable
+local remap_variable_categories_lookup = {}
+
+local function parseConfigFile( suppressWarning )
+	-- If table is in here then it's an indexed table
+	-- Note: For now, all suboptions are always indexed tables
+	local optable_indexed_tables = {
+		["category_output_order"] = true
+	}
+
+	-- prefixes and their associated table values
+	local optable_option_prefixes = {
+		["remap"] = { 
+			["optkey"] = "remap_categories",
+			["suboptions"] = 2 -- number of required suboptions
+		}
+	}
+	
+	if flag_verbosity > 0 then print( "Reading config file: " .. conffilename ) end
+	local f = io.open( conffilename, "r" )
+	if f then
+		-- Inspired by https://rosettacode.org/wiki/Read_a_configuration_file#Lua
+		local line = f:read( "*line" )
+		while line do -- loop over lines
+			line = line:match( "%s*(.+)%s*" ) -- trim whitespace
+			-- ignore lines starting with # or ; (comments)
+			if line and line:sub( 1, 1 ) ~= '#' and line:sub( 1, 1 ) ~= ';' then
+				-- options (and prefixes) must not have any spaces
+				local option = line:match( "^([^%s=]+)[^=]*=" )
+				local value  = line:match( "=%s*(%S.*)" )
+				
+				if option then
+					-- options are always evaluated in lowercase
+					option = string.lower(option)
+					
+					-- Check if option fits a defined prefix
+					-- Ex: remap FOO,1 = BAR1
+					local suboption1,suboption2 = nil,nil
+					if optable_option_prefixes[ option ] then
+						-- See if there are more than one suboptions
+						-- Currently used for "remap"
+						-- In above ex, 1 would be suboption2
+						if optable_option_prefixes[ option ]["suboptions"] > 1 then
+							suboption1,suboption2 = line:match( "^%S+%s+([^,]*[^,%s])%s*,%s*([^=,]*[^=,%s])%s*=" )
+						else
+							suboption1 = line:match( "^%S+%s+([^=]*[^=%s])%s*=" )
+						end
+						if not suboption1 then
+							if flag_verbosity > 0 then print( string.format("WARNING: Invalid or missing suboptions for option [%s] in [%s]", option, conffilename ) ) end
+							option = nil -- make next sanity check fail
+						else -- we have one or more suboptions
+							-- Currently, suboptions are all caps
+							suboption1 = string.upper(suboption1)
+							suboption2 = string.upper(suboption2)
+							
+							-- set option var to correct key
+							option = optable_option_prefixes[ option ]["optkey"]
+						end -- if not suboption
+					end -- if option has a prefix
+
+					-- Check if option doesn't exist
+					-- All valid options must have a default or set to false, never nil or uninitialized
+					if not option or not (optable[option] or optable[option] == false) then
+						if flag_verbosity > 0 then print( string.format("WARNING: Invalid option [%s] in [%s]", option, conffilename ) ) end
+					
+					-- single value
+					elseif not value then
+						if flag_verbosity > 0 then print( string.format("WARNING: Missing value for option [%s] in [%s]", option, conffilename ) ) end
+					
+					-- single value
+					elseif not value:find( ',' ) then
+						-- Validate values
+						if type(optable[option]) == "number" then
+							value = tonumber(value)
+							if value == nil and flag_verbosity > 0 then print( string.format("WARNING: Invalid string value [%s] for option [%s] (number expected)", value, option) ) end
+						else
+							-- check if boolean
+							local v = value:lower()
+							if v == 'true' or v == 'false' or v == 't' or v == 'f' then
+								if type(optable[option]) ~= "boolean" and flag_verbosity > 0 then 
+									print( string.format("WARNING: Invalid boolean value [%s] for option [%s] (option does not accept boolean)", value, option) )
+								else
+									value = ( v == 'true' or v == 't' )
+								end
+							end -- if value is "true" or "false"
+						end
+						
+						-- Assign single value
+						if type(optable[option]) == "table" then
+							if suboption1 then
+								if suboption2 then
+									-- init table, if needed
+									if not optable[option][suboption1] then optable[option][suboption1] = {} end
+									-- use numbered indexes whenever possible
+									optable[option][suboption1][tonumber(suboption2) or suboption2] = value
+								else -- only 1 suboption
+									-- currently, no options use only 1 suboption
+									if flag_verbosity > 0 then print( string.format("WARNING: Invalid suboption format for [%s] in [%s]", option, conffilename) ) end
+								end
+							-- no suboption; check if option is an indexed table
+							elseif optable_indexed_tables[option] then
+								-- if so, reset table and set value in 1st index
+								optable[option] = {
+									[1] = value
+								}
+							else -- not an indexed table
+								-- reset hash table with ONLY this value enabled
+								optable[option] = {
+									[ value:lower() ] = true
+								}
+							end
+						else -- option is not a table
+							optable[option] = value
+						end
+							
+						if flag_verbosity > 1 then 
+							if suboption1 and suboption2 then
+								print( string.format("Set Option [%s][%s][%s] = [%s]", option, suboption1, suboption2, value) )
+							else
+								print( string.format("Set Option [%s] = [%s]", option, value) )
+							end
+						end
+						
+					-- multiple values separated by commas
+					elseif suboption1 or suboption2 then
+						-- currently there are no suboptions with lists
+						if flag_verbosity > 0 then print( string.format("WARNING: Invalid suboption format for [%s] list in [%s]", option, conffilename) ) end
+					else
+						value = value .. ',' -- append , for parsing
+						-- Whether this option is an indexed table or not
+						local is_indexed = optable_indexed_tables[option]
+						local t = {} -- new table
+						-- iterate through comma-deliminated list
+						local entry
+						for entry in value:gmatch( "%s*([^,]*[^,%s])%s*," ) do
+							if is_indexed then
+								table.insert(t, entry)
+							else -- if hash, lowercase then check if valid entry
+								entry = string.lower(entry)
+								if not ( optable[option][entry] or optable[option][entry] == false ) then
+									if flag_verbosity > 0 then print( string.format("WARNING: Invalid entry for [%s] list in [%s]", option, conffilename) ) end
+								else
+									t[ entry ] = true
+								end
+							end
+							if flag_verbosity > 1 then print( string.format("Option [%s] add entry [%s]", option, entry) ) end
+						end -- for entry
+						-- if we have a new, valid list then use it
+						if not isTableEmpty(t) then
+							optable[option] = t
+						end
+					end -- if valid option or single or multiple value
+				end -- if option
+			end -- if valid line
+		
+			-- Read the next line (if it exists, otherwise 'line' is nil)
+			line = f:read( "*line" )
+		end -- while line
+		f:close() -- done with file
+		
+		-- This is a reverse lookup table, mainly for use with optable[ "category_output_order" ].
+		-- Note that remaps are done on OUTPUT and have nothing to do with parsing.
+		local remap_variable_categories = optable["remap_categories"]
+		if remap_variable_categories then
+			for k,t in pairs(remap_variable_categories) do
+				-- t is a table
+				for i,remap in pairs(t) do
+					if type(remap) == "string" then
+						remap_variable_categories_lookup[remap] = { ["origvar"] = k, ["cat"] = i }
+					end
+				end
+			end
+		end -- if remap_variable_categories
+
+	elseif not suppressWarning and flag_verbosity > 0 then
+		print( string.format("WARNING: Cannot open config file [%s], skipping", conffilename) )
+	end -- if file opens for reading OK
+end -- parseConfigFile()
+
+-- Check and load configuration from default file location, suppressing warnings if not found
+parseConfigFile( true )
+
+-- # End Configuration File Parsing
 -- ################################################################
 
 
@@ -290,6 +567,7 @@ local argparameters = {
 						if m then
 							conffilename = m
 							print( "Configuration file set to: " .. conffilename )
+							parseConfigFile( false )
 							return true
 						end
 					 end -- function
@@ -525,268 +803,6 @@ end
 -- # End Argument Definition & Parsing
 -- ################################################################
 
--- ################################################################
--- ## Read Configuration File
-
---[[ Syntax
-	Commments: Line starts with # or ;
-	Boolean: OPTIONNAME = true or false (or T or F)
-	Single value: OPTIONAME = value
-	Multiple values: OPTIONNAME = value1,value2,value3,value4
-	Option with one suboption (unused): OPTIONNAME suboption = value
-	Option with two suboptions: OPTIONNAME suboption1,suboption2 = value
-	Option names cannot have spaces.
-	Values and suboptions can have spaces.
-	Values cannot have commas or equal signs.
-	Spaces are otherwise trimmed.
---]]
-
--- Contains configurable options and their defaults
--- Configure with the .conf configuration file
--- Note: Hash keys must be lowercase
-local optable = {
-	["csv_class_num_header"] = true, -- Show number of classes in CSV output
-	["csv_section_header"] = true, -- Show section header in CSV output
-	["csv_table_seperator"] = false, -- Separates tables on CSV output (given string to use for seperator)
-	["cptable_default_category"] = 2, -- Default category if variable not defined using "remap varname,cat = newname"
-	["citable_default_category"] = 2, -- " 			"
-
-	["lcmtable_output_columns"] = { 
-		["# of free parameters"] = true,
-		["sample-size adjusted bic"] = true,
-		["entropy"] = true,
-		["lmr p value"] = true,
-		["overall bp chi-sq"] = true,
-		["avg. bp"] = true,
-		["h0 value"] = true,
-		["approx p-value"] = false
-	},
-	
-	-- default: S.E.
-	["cptable_output_columns"] = { 
-		["estimate"] = false,
-		["s.e."] = true,
-		["est./s.e."] = false,
-		["two-tailed p-Value"] = false
-	},
-	-- default: Lower CI Bound 2.5%, Estimate, Upper CI Bound 2.5%
-	["citable_output_columns"] = { 
-		["lower ci bound 0.5%"] = false,
-		["lower ci bound 2.5%"] = true,
-		["lower ci bound 5%"] = false,
-		["estimate"] = true,
-		["upper ci bound 5%"] = false,
-		["upper ci bound 2.5%"] = true,
-		["upper ci bound 0.5%"] = false
-	},
-	-- default: Mean, S.E., overall, overall_chi_sq, overall_p_value
-	["bchtable_output_columns"] = { 
-		["mean"] = true,
-		["s.e."] = true,
-		["overall"] = true,
-		["overall_chi_sq"] = true,
-		["overall_p_value"] = true,
-		["classx_vs_classy"] = false,
-		["classx_vs_classy_chi_sq"] = false,
-		["classx_vs_classy_p_value"] = false
-	},
-	-- default: Estimate, S.E., Two-Tailed P-Value, #byrefclass
-	["r3step_output_columns"] = {
-		["estimate"] = true,
-		["s.e."] = true,
-		["est./s.e."] = false,
-		["two-tailed p-value"] = true,
-		["#byrefclass"] = true -- output one table per reference class / parameterization
-	},
-	-- Order of variables outputted in CSV table and R plot
-	["category_output_order"] = {},
-	-- remap categories of a variable to individual variable names
-	-- Note: must start with "remap"
-	["remap_categories"] = {}
-}
-
--- lookup table for remapped variable names<->categories of that variable
-local remap_variable_categories_lookup = {}
-
-do
-	-- If table is in here then it's an indexed table
-	-- Note: For now, all suboptions are always indexed tables
-	local optable_indexed_tables = {
-		["category_output_order"] = true
-	}
-
-	-- prefixes and their associated table values
-	local optable_option_prefixes = {
-		["remap"] = { 
-			["optkey"] = "remap_categories",
-			["suboptions"] = 2 -- number of required suboptions
-		}
-	}
-	
-	if flag_verbosity > 0 then print( "Reading config file: " .. conffilename ) end
-	local f = io.open( conffilename, "r" )
-	if f then
-		-- Inspired by https://rosettacode.org/wiki/Read_a_configuration_file#Lua
-		local line = f:read( "*line" )
-		while line do -- loop over lines
-			line = line:match( "%s*(.+)%s*" ) -- trim whitespace
-			-- ignore lines starting with # or ; (comments)
-			if line and line:sub( 1, 1 ) ~= '#' and line:sub( 1, 1 ) ~= ';' then
-				-- options (and prefixes) must not have any spaces
-				local option = line:match( "^([^%s=]+)[^=]*=" )
-				local value  = line:match( "=%s*(%S.*)" )
-				
-				if option then
-					-- options are always evaluated in lowercase
-					option = string.lower(option)
-					
-					-- Check if option fits a defined prefix
-					-- Ex: remap FOO,1 = BAR1
-					local suboption1,suboption2 = nil,nil
-					if optable_option_prefixes[ option ] then
-						-- See if there are more than one suboptions
-						-- Currently used for "remap"
-						-- In above ex, 1 would be suboption2
-						if optable_option_prefixes[ option ]["suboptions"] > 1 then
-							suboption1,suboption2 = line:match( "^%S+%s+([^,]*[^,%s])%s*,%s*([^=,]*[^=,%s])%s*=" )
-						else
-							suboption1 = line:match( "^%S+%s+([^=]*[^=%s])%s*=" )
-						end
-						if not suboption1 then
-							if flag_verbosity > 0 then print( string.format("WARNING: Invalid or missing suboptions for option [%s] in [%s]", option, conffilename ) ) end
-							option = nil -- make next sanity check fail
-						else -- we have one or more suboptions
-							-- Currently, suboptions are all caps
-							suboption1 = string.upper(suboption1)
-							suboption2 = string.upper(suboption2)
-							
-							-- set option var to correct key
-							option = optable_option_prefixes[ option ]["optkey"]
-						end -- if not suboption
-					end -- if option has a prefix
-
-					-- Check if option doesn't exist
-					-- All valid options must have a default or set to false, never nil or uninitialized
-					if not option or not (optable[option] or optable[option] == false) then
-						if flag_verbosity > 0 then print( string.format("WARNING: Invalid option [%s] in [%s]", option, conffilename ) ) end
-					
-					-- single value
-					elseif not value then
-						if flag_verbosity > 0 then print( string.format("WARNING: Missing value for option [%s] in [%s]", option, conffilename ) ) end
-					
-					-- single value
-					elseif not value:find( ',' ) then
-						-- Validate values
-						if type(optable[option]) == "number" then
-							value = tonumber(value)
-							if value == nil and flag_verbosity > 0 then print( string.format("WARNING: Invalid string value [%s] for option [%s] (number expected)", value, option) ) end
-						else
-							-- check if boolean
-							local v = value:lower()
-							if v == 'true' or v == 'false' or v == 't' or v == 'f' then
-								if type(optable[option]) ~= "boolean" and flag_verbosity > 0 then 
-									print( string.format("WARNING: Invalid boolean value [%s] for option [%s] (option does not accept boolean)", value, option) )
-								else
-									value = ( v == 'true' or v == 't' )
-								end
-							end -- if value is "true" or "false"
-						end
-						
-						-- Assign single value
-						if type(optable[option]) == "table" then
-							if suboption1 then
-								if suboption2 then
-									-- init table, if needed
-									if not optable[option][suboption1] then optable[option][suboption1] = {} end
-									-- use numbered indexes whenever possible
-									optable[option][suboption1][tonumber(suboption2) or suboption2] = value
-								else -- only 1 suboption
-									-- currently, no options use only 1 suboption
-									if flag_verbosity > 0 then print( string.format("WARNING: Invalid suboption format for [%s] in [%s]", option, conffilename) ) end
-								end
-							-- no suboption; check if option is an indexed table
-							elseif optable_indexed_tables[option] then
-								-- if so, reset table and set value in 1st index
-								optable[option] = {
-									[1] = value
-								}
-							else -- not an indexed table
-								-- reset hash table with ONLY this value enabled
-								optable[option] = {
-									[ value:lower() ] = true
-								}
-							end
-						else -- option is not a table
-							optable[option] = value
-						end
-							
-						if flag_verbosity > 1 then 
-							if suboption1 and suboption2 then
-								print( string.format("Set Option [%s][%s][%s] = [%s]", option, suboption1, suboption2, value) )
-							else
-								print( string.format("Set Option [%s] = [%s]", option, value) )
-							end
-						end
-						
-					-- multiple values separated by commas
-					elseif suboption1 or suboption2 then
-						-- currently there are no suboptions with lists
-						if flag_verbosity > 0 then print( string.format("WARNING: Invalid suboption format for [%s] list in [%s]", option, conffilename) ) end
-					else
-						value = value .. ',' -- append , for parsing
-						-- Whether this option is an indexed table or not
-						local is_indexed = optable_indexed_tables[option]
-						local t = {} -- new table
-						-- iterate through comma-deliminated list
-						local entry
-						for entry in value:gmatch( "%s*([^,]*[^,%s])%s*," ) do
-							if is_indexed then
-								table.insert(t, entry)
-							else -- if hash, lowercase then check if valid entry
-								entry = string.lower(entry)
-								if not ( optable[option][entry] or optable[option][entry] == false ) then
-									if flag_verbosity > 0 then print( string.format("WARNING: Invalid entry for [%s] list in [%s]", option, conffilename) ) end
-								else
-									t[ entry ] = true
-								end
-							end
-							if flag_verbosity > 1 then print( string.format("Option [%s] add entry [%s]", option, entry) ) end
-						end -- for entry
-						-- if we have a new, valid list then use it
-						if tableLength(t) > 0 then
-							optable[option] = t
-						end
-					end -- if valid option or single or multiple value
-				end -- if option
-			end -- if valid line
-		
-			-- Read the next line (if it exists, otherwise 'line' is nil)
-			line = f:read( "*line" )
-		end -- while line
-		f:close() -- done with file
-		
-		-- This is a reverse lookup table, mainly for use with optable[ "category_output_order" ].
-		-- Note that remaps are done on OUTPUT and have nothing to do with parsing.
-		local remap_variable_categories = optable["remap_categories"]
-		if remap_variable_categories then
-			for k,t in pairs(remap_variable_categories) do
-				-- t is a table
-				for i,remap in pairs(t) do
-					if type(remap) == "string" then
-						remap_variable_categories_lookup[remap] = { ["origvar"] = k, ["cat"] = i }
-					end
-				end
-			end
-		end -- if remap_variable_categories
-
-	elseif flag_verbosity > 0 then
-		print( string.format("WARNING: Cannot open config file [%s], skipping", conffilename) )
-	end -- if file opens for reading OK
-end -- do
-
--- # End Configuration File Parsing
--- ################################################################
-
 
 -- ################################################################
 -- # BEGIN Main Logic & Parsing
@@ -887,19 +903,19 @@ while arg[n] do
 					print("WARNING: Could not parse number of dependent variables")
 				end
 				print('') -- empty line
-				if resultstable[n]["lcptable"] and tableLength(resultstable[n]["lcptable"]) then
+				if resultstable[n]["lcptable"] and not isTableEmpty(resultstable[n]["lcptable"]) then
 					print( "SUCCESSFULLY PARSED: " .. strloc["FINAL CLASS COUNTS AND PROPORTIONS FOR THE LATENT CLASSES"] .. ' ' .. strloc["BASED ON THE ESTIMATED MODEL"])
 				end
-				if resultstable[n]["r3steptable"] and tableLength(resultstable[n]["r3steptable"]) then
+				if resultstable[n]["r3steptable"] and not isTableEmpty(resultstable[n]["r3steptable"]) then
 					print( "SUCCESSFULLY PARSED: " .. patterns_by_section_hash[ "THE 3-STEP PROCEDURE" ]:getheaderstr( resultstable[n] ) )
 				end
-				if resultstable[n]["bchtable"] and tableLength(resultstable[n]["bchtable"]) then
+				if resultstable[n]["bchtable"] and not isTableEmpty(resultstable[n]["bchtable"]) then
 					print( "SUCCESSFULLY PARSED: " .. patterns_by_section_hash[ "EQUALITY TESTS OF MEANS ACROSS CLASSES USING THE BCH PROCEDURE WITH N DEGREE(S) OF FREEDOM FOR THE OVERALL TEST" ]:getheaderstr( resultstable[n] ) )
 				end
-				if resultstable[n]["cptable"] and tableLength(resultstable[n]["cptable"]) then
+				if resultstable[n]["cptable"] and not isTableEmpty(resultstable[n]["cptable"]) then
 					print( "SUCCESSFULLY PARSED: " .. strloc[ "RESULTS IN PROBABILITY SCALE" ] )
 				end
-				if resultstable[n]["citable"] and tableLength(resultstable[n]["citable"]) then
+				if resultstable[n]["citable"] and not isTableEmpty(resultstable[n]["citable"]) then
 					print( "SUCCESSFULLY PARSED: " .. strloc[ "CONFIDENCE INTERVALS IN PROBABILITY SCALE" ] )
 				end
 				if resultstable[n]["# of free parameters"] ~= nil and resultstable[n]["h0 value"] ~= nil and resultstable[n]["sample-size adjusted bic"] ~= nil then
@@ -944,7 +960,7 @@ if string.upper(flag_output_type) == "R" then
 	local haveresults = false
 	for _,rt in pairs(resultstable) do
 		for k,t in pairs(rt) do
-			if type(t) == "table" and tableLength(t) then
+			if type(t) == "table" and not isTableEmpty(t) then
 				haveresults = true
 			end
 		end -- for k,t
@@ -1025,7 +1041,7 @@ if string.upper(flag_output_type) == "R" then
 		if rt["cptable"] or rt["citable"] then
 			local nvar
 			local varlist = rt["citable"]["#vars_in_orig_order"]
-			if tableLength( optable[ "category_output_order" ] ) then
+			if not isTableEmpty( optable[ "category_output_order" ] ) then
 				f:write( "# Re-ordering variables based on given category_output_order\n" .. "\n")
 				varlist = optable[ "category_output_order" ]
 			end
@@ -1355,7 +1371,7 @@ if string.upper(flag_output_type) == "R" then
 					end -- for output_matrixes
 				end -- for varlist
 				-- Finally, assign the vector values
-				if tableLength(vector_values) then
+				if not isTableEmpty(vector_values) then
 					f:write('\n')
 					f:write("# The BCH overall values are vectors indexed by variable\n")
 					f:write("# a_vector[1] would be the value for the 1st variable according to order in varlab (bch_varlab)\n")
@@ -1367,7 +1383,7 @@ if string.upper(flag_output_type) == "R" then
 							f:write( '#' .. string.format(v["name"] .. line, vector_values[ v["name"] ]) )
 						end
 					end -- for output_vectors
-				end -- if tableLength(vector_values)
+				end -- if not isTableEmpty(vector_values)
 				f:write('\n')
 			end -- if rt["bchtable"]
 
@@ -1526,7 +1542,7 @@ else -- flag_output_type
 	for _,rt in pairs(resultstable) do
 		for k,t in pairs(rt) do
 			-- Skip these three results as they won't be written to CSV by themselves
-			if type(t) == "table" and tableLength(t) then
+			if type(t) == "table" and not isTableEmpty(t) then
 				haveresults = true
 			end
 		end -- for k,t
@@ -1720,12 +1736,11 @@ else -- flag_output_type
 				
 				-- Output results of BCH parsing
 				-- resultstable[n]["bchtable"][varname]["classes"][class] OR resultstable[n]["bchtable"][varname]["overall"]
-				local _,var,t,tlength,class,values
+				local _,var,t,class,values
 				for _,var in ipairs(rt["bchtable"]["#vars_in_orig_order"]) do 
 					local t = rt["bchtable"][var] -- t is a table
 					line = var -- Start with the variable (key) name
-					local tlength = tableLength(t)
-					if tlength then -- DEBUG: skip empty tables
+					if not isTableEmpty(t) then -- DEBUG: skip empty tables
 						-- Print out results per classes
 						for class,values in ipairs(t["classes"]) do
 							line = line .. ',' .. values["mean"] .. ',' .. values["s.e."]
@@ -1734,7 +1749,7 @@ else -- flag_output_type
 						line = line .. ',' .. t["overall"]["chi-sq"] .. ',' .. t["overall"]["p-value"]
 						
 						f:write(line .. '\n') -- write line of values
-					end -- if tlength
+					end -- if not isTableEmpty(t)
 				end -- for var,t
 				if optable[ "csv_table_seperator" ] then
 					f:write( optable[ "csv_table_seperator" ] .. '\n' )
@@ -1852,7 +1867,7 @@ else -- flag_output_type
 						
 				-- Set variable list based on whether we have a set order or original order
 				local varlist = rt["cptable"]["#vars_in_orig_order"]
-				if tableLength( optable[ "category_output_order" ] ) then
+				if not isTableEmpty( optable[ "category_output_order" ] ) then
 					print( "Re-ordering variables based on given category_output_order" )
 					varlist = optable[ "category_output_order" ]
 				end
@@ -1942,7 +1957,7 @@ else -- flag_output_type
 				
 				-- Set variable list based on whether we have a set order or original order
 				local varlist = rt["citable"]["#vars_in_orig_order"]
-				if tableLength( optable[ "category_output_order" ] ) then
+				if not isTableEmpty( optable[ "category_output_order" ] ) then
 					print( "Re-ordering variables based on given category_output_order" )
 					varlist = optable[ "category_output_order" ]
 				end

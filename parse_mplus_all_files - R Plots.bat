@@ -20,6 +20,8 @@ SET "PARSE_MPLUS=%~dp0\parse_mplus.exe"
 REM Additional parameters to parse_mplus
 SET "PARAMETERS=-type=R"
 
+REM Configuration file location, if it exists
+SET "CONFIGFILE=%~dp0\parse_mplus.conf"
 
 REM ** Start **
 
@@ -38,9 +40,9 @@ IF NOT "%~1"=="" (
 			pushd "%~1"
 		) ELSE (
 			IF NOT "%OUTPUT_FILENAME%"=="" (
-				"%PARSE_MPLUS%" "-o=%~dp1%OUTPUT_FILENAME%" %PARAMETERS% "%~1"
+				"%PARSE_MPLUS%" "-o=%~dp1%OUTPUT_FILENAME%" "-c=%CONFIGFILE%" %PARAMETERS% "%~1"
 			) ELSE (
-				"%PARSE_MPLUS%" %PARAMETERS% "%~1"
+				"%PARSE_MPLUS%" "-c=%CONFIGFILE%" %PARAMETERS% "%~1"
 			)
 			GOTO :done
 		)
@@ -61,9 +63,9 @@ FOR %%G IN (*.out) DO (
 )
 IF NOT [!_files!]==[] (
 	IF NOT "%OUTPUT_FILENAME%"=="" (
-		"%PARSE_MPLUS%" "-o=%OUTPUT_FILENAME%" %PARAMETERS% !_files!
+		"%PARSE_MPLUS%" "-o=%OUTPUT_FILENAME%" "-c=%CONFIGFILE%" %PARAMETERS% !_files!
 	) ELSE (
-		"%PARSE_MPLUS%" %PARAMETERS% !_files!
+		"%PARSE_MPLUS%" "-c=%CONFIGFILE%" %PARAMETERS% !_files!
 	)
 ) ELSE (
 	echo [%~nx0] ERROR: Can't find any .out files to parse
