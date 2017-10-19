@@ -74,7 +74,11 @@ strings_localized = {
 	["csv_class_num_header_format"] = "**%dC**", -- %d is replaced by total number of classes
 	["*Ref Class %d*"] = "*Ref Class %d*", -- %d is replaced by ref class (for R3STEP)
 	
-	["Latent Class Model Selection"] = "Latent Class Model Selection"
+	["Latent Class Model Selection"] = "Latent Class Model Selection",
+	
+	-- Used in R plotting code
+	["Conditional probability"] = "Conditional probability", -- default y axis label
+	["Latent class indicator"] = "Latent class indicator" -- default x axis label
 }
 
 -- Example of how to overwrite and extend this table:

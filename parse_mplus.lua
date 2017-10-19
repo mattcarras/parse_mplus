@@ -674,7 +674,7 @@ local argparameters = {
 						end
 					 end -- function
 	},
-	{ -- Do NOT parse for R3STEP (formely Aux Var Reg) values
+	{ -- Do NOT parse for R3STEP (formerly Aux Var Reg) values
 		["key"] = '-nor3step',
 		["desc"] = "-nor3step\t Do NOT parse for R3STEP (Auxiliary Variable Regression) values",
 		["pattern"] = "^%-nor3step$",
@@ -686,7 +686,7 @@ local argparameters = {
 						end
 					 end -- function
 	},
-	{ -- Parse for ONLY R3STEP (formely Aux Var Reg) values
+	{ -- Parse for ONLY R3STEP (formerly Aux Var Reg) values
 		["key"] = '-onlyr3step',
 		["desc"] = "-onlyr3step\t Parse ONLY for R3STEP (Auxiliary Variable Regression) values",
 		["pattern"] = "^%-onlyr3step$",
@@ -1000,6 +1000,9 @@ if string.upper(flag_output_type) == "R" then
 		f:write( "# File: " .. filename_outfile .. "\n")
 		f:write("\n")
 		
+		f:write('# NOTE: You will see some commented out code, which just gives you extra options and additional variables not used by the default logic.' .. "\n")
+		f:write("\n")
+		
 		-- LCP Values
 		if rt["lcptable"] then
 			-- Write Section header as R comment
@@ -1026,7 +1029,7 @@ if string.upper(flag_output_type) == "R" then
 		-- Number of classes for this file
 		local nclass = rt["numofclasses"]
 		
-		f:write('# Class names for legend' .. "\n")
+		f:write('# Class names for legend or title' .. "\n")
 		local classnames
 		for i = 1,nclass do
 			if not classnames then
@@ -1038,6 +1041,24 @@ if string.upper(flag_output_type) == "R" then
 		f:write(string.format("classnames<-c(%s)",classnames) .. "\n")
 		f:write("\n")
 			
+		f:write("# Number of classes" .. "\n" )
+		f:write('nclass<-' .. nclass .. "\n")
+		f:write("\n")
+		
+		f:write('# LEGEND TEXT - edit legend.text to edit the text of the legend' .. "\n")
+		f:write('# There should be values for each class #' .. "\n")
+		f:write('# This is generated automatically by using paste() on each vector member, but can be edited manually here' .. "\n")
+		f:write('# Ex result: Class 1 (5.2%), Class 2 (3.2%), ...' .. "\n")
+		if rt["lcptable"] then
+			local lcpprecision = patterns_by_section_hash["BASED ON THE ESTIMATED MODEL"]["precision"] or 1
+			f:write('# sapply() -- apply function "round()" with precision argument to each member of vector "lcp"' .. "\n")
+			f:write('legend.text<-paste(classnames, "  (", sapply(lcp*100,round,' .. lcpprecision .. '), "%)", sep="")' .. "\n")
+		else
+			f:write('#legend.text<-paste(classnames, " ", sep="")' .. "\n")
+			f:write('legend.text<-classnames' .. "\n")
+		end
+		f:write("\n")
+		
 		if rt["cptable"] or rt["citable"] then
 			local nvar
 			local varlist = rt["citable"]["#vars_in_orig_order"]
@@ -1047,10 +1068,9 @@ if string.upper(flag_output_type) == "R" then
 			end
 			nvar = #varlist
 			
-			f:write("# Number of variables and classes" .. "\n")
-			f:write("# NOTE: nvar here does not apply to BCH or R3STEP (formely Aux Var Reg) variables\n")
+			f:write("# Number of variables" .. "\n")
+			f:write("# NOTE: nvar here does not apply to BCH or R3STEP variables\n")
 			f:write('nvar<-' .. nvar .. "\n")
-			f:write('nclass<-' .. nclass .. "\n")
 			f:write("\n")
 			
 			local i,var,variables
@@ -1402,8 +1422,23 @@ if string.upper(flag_output_type) == "R" then
 				-- }	
 			end
 			
+			local line = "colors<-c(1"
+			local c
+			for i = 2,nclass do
+				c = i
+				if i > 4 then -- skip light cyan
+					c = c + 1
+				end
+				line = line .. ',' .. c
+			end
+			line = line .. ')'
+				
 			-- ** Rest of plotting code			
 			f:write('# SETUP PLOT PARAMETERS' .. "\n")
+			f:write('# Line colors, skipping light cyan if nclass > 4' .. "\n")
+			f:write(line .. "\n")
+			f:write('# All black line colors, for testing what it may look like in B&W publication (commented out by default)' .. "\n")
+			f:write('#colors<-rep(1,nclass)' .. "\n")
 			f:write("\n")
 			f:write('# Set below to FALSE to do 1 plot per class (default is 1 combined plot)' .. "\n")
 			f:write('do_combined_plot=TRUE' .. "\n")
@@ -1413,21 +1448,29 @@ if string.upper(flag_output_type) == "R" then
 			f:write('  # mfrow=c(1,1) == 1 rows, 1 columns of plots' .. "\n")
 			f:write('  # Ex: mfrow=c(3,2) == 3 rows, 2 columns of plots' .. "\n")
 			f:write('  # mar - A numerical vector of the form c(bottom, left, top, right) which gives the number of lines of margin to be specified on the four sides of the plot. The default is c(5, 4, 4, 2) + 0.1.' .. "\n")
-			f:write('  # This code for mar= tries to automatically adjust the margin depending on the longest variable name in varlab, otherwise using default margins.' .. "\n")
-			f:write('  par(mfrow=c(1,1),mar=c(max(5,max(nchar(varlab))/1.3), 4, 4, 2) + 0.1)' .. "\n")
+			f:write('  # This code for mar= tries to automatically adjust the margin depending on the longest variable name in varlab, otherwise using default margins lengthed a bit for the legend and axis labels.' .. "\n")
+			f:write('  # Note: In R Studio, when you "zoom" the legend may be cut off a tiny bit. You can adjust the final margin value (default 8) if you want, though the best margins for zoomed versus export image can be different.' .. "\n")
+			f:write('  #par(mfrow=c(1,1),mar=c(max(7,max(nchar(varlab))/1.3 + 2), 4.5, 4, 8) + 0.1)' .. "\n")
+			f:write('  par(mfrow=c(1,1),mar=c(max(7,max(nchar(varlab))/1.3 + 2), 4.5, 4, 2) + 0.1)' .. "\n")
 			f:write("\n")
-			f:write('  # NOTE: To remove the label at the top, change to "plot(...,main="")" keeping the rest the same. (Default is filename_outfile)' .. "\n")
+			f:write('  # NOTE: To remove the label at the top, change to "plot(...,main="")" keeping the rest the same. (Default is "' .. filename_outfile .. '" so you know which file this figure came from)' .. "\n")
 			f:write('  # main="filename" - label at top (default: filename)' .. "\n")
 			f:write('  # ylim=c(0,1) - limit for y-axis (default: 0-1.0)' .. "\n")
-			f:write('  # ylab="" - label for y-axis (default: blank)' .. "\n")
-			f:write('  # xlab="" - label for x-axis (default: blank)' .. "\n")
-			f:write('  plot(0,0,ylim=c(0,1),xlim=c(1,nvar),col=0,ylab="",xaxt="n",xlab="",main="' .. filename_outfile .. '")' .. "\n")
-			f:write('  axis(1,at=seq(1:nvar),labels=varlab,las=2,xlab="",xlim=c(1,nvar))' .. "\n")
+			f:write('  # ylab="" - label for y-axis' .. "\n")
+			f:write('  # xlab="" - label for x-axis' .. "\n")
+			f:write('  # cex.axis=0.75 - Percentage size of font for variable names on x axis' .. "\n")
+			f:write('  # font.lab=2 - Bold the axis labels' .. "\n")
+			f:write('  # line=... - The call to title() uses a bit of code to try and automatically position the x axis label based on longest length of variable names' .. "\n")
+			f:write('  plot(0,0,ylim=c(0,1),xlim=c(1,nvar),col=0,ylab="' .. strloc["Conditional probability"] .. '", font.lab=2,xaxt="n",xlab="",main="' .. filename_outfile .. '")' .. "\n")
+			f:write('  axis(1,at=seq(1:nvar),labels=varlab,las=2,cex.axis=0.75,xlab="",xlim=c(1,nvar))' .. "\n")
+			f:write('  title(xlab="' .. strloc["Latent class indicator"] .. '", line=max(6,max(nchar(varlab))/1.35),font.lab=2)' .. "\n")
 			f:write("\n")
 			
 			f:write('  # PARAMETERS FOR EACH PLOTTED LINE' .. "\n")
-			f:write('  # Iterate over each class, adding the lines to the plot for each matrix' .. "\n")
-			f:write('  # lty=1 -- solid line, lty=2 -- dashed line' .. "\n")
+			f:write('  # Iterate over each class, adding the lines and points to the plot for each matrix' .. "\n")
+			f:write('  # lty -- line types: "blank", "solid", "dashed", "dotted", "dotdash", "longdash", "twodash"' .. "\n")
+			f:write('  # col -- colour, pch -- point symbol type, cex -- size of point symbols' .. "\n")
+			f:write('  # lwd -- line width' .. "\n")
 			f:write('  for(j in 1:nclass){' .. "\n")
 			local ylines -- array of matrixes with data points
 			if rt["citable"] then
@@ -1438,15 +1481,18 @@ if string.upper(flag_output_type) == "R" then
 			if ylines then
 				for i,v in ipairs(ylines) do
 					if i == 1 then
-						f:write('    lines(x=rep(1:nvar),y=' .. v .. '[,j],lty=1,col=j)' .. "\n")
+						f:write('    lines(x=rep(1:nvar),y=' .. v .. '[,j],lty="solid",lwd=2,col=colors[j])' .. "\n")
+						f:write('    points(x=rep(1:nvar),y=' .. v .. '[,j],lty="solid",lwd=2,col=colors[j],pch=j,cex=0.5)' .. "\n")
 					else
-						f:write('    lines(x=rep(1:nvar),y=' .. v .. '[,j],lty=2,col=j)' .. "\n")
+						f:write('    lines(x=rep(1:nvar),y=' .. v .. '[,j],lty="dotted",col=colors[j])' .. "\n")
+						f:write('    points(x=rep(1:nvar),y=' .. v .. '[,j],lty="dotted",col=colors[j],pch=j,cex=0.5)' .. "\n")
 					end
 				end -- for ylines
 			end
 			f:write('  } # end for' .. "\n")
 			f:write("\n")
 			
+			--[[
 			f:write('  # LEGEND TEXT - edit legend.text to edit the text of the legend' .. "\n")
 			f:write('  # There should be values for each class #' .. "\n")
 			f:write('  # This is generated automatically, but can be edited manually here' .. "\n")
@@ -1468,11 +1514,16 @@ if string.upper(flag_output_type) == "R" then
 				f:write('  # Set legend to classnames' .. "\n")
 				f:write('  legend.text<-classnames' .. "\n")
 			end -- if rt["lcptable"] then
+			--]]
 			f:write("\n")
 			f:write('  # SET LEGEND - comment out "legend(...)" to disable legend' .. "\n")
 			f:write('  # bty="n" means no border or background, text.font=2 means bold' .. "\n")
-			f:write('  # "topright" is position for legend' .. "\n")
-			f:write('  legend("topright",legend.text,fill=seq(1:nclass),text.font=2,bty="n")' .. "\n")
+			f:write('  # You may use positions such as "topright" for the legend, but here we use x and y positioning along with "xpd = T" to position the legend outside of the plotting area' .. "\n")
+			f:write('  # Second call adds the coloured point symbols' .. "\n")
+			f:write('  #legend(x=nvar + 0.5, y=1,legend.text,text.font=2,bty="n",pch=rep(NA,nclass), xpd = T)' .. "\n")
+			f:write('  #legend(x=nvar + 0.5, y=1,rep("",nclass),text.font=2,bty="n",pch=rep(1:nclass),col=colors, xpd = T)' .. "\n")
+			f:write('  legend("topright",legend.text,text.font=2,bty="n",pch=rep(NA,nclass), xpd = T)' .. "\n")
+			f:write('  legend("topright",rep("",nclass),text.font=2,bty="n",pch=rep(1:nclass),col=colors, xpd = T)' .. "\n")
 			f:write("\n")
 			
 			-- Plots per class code
@@ -1482,7 +1533,7 @@ if string.upper(flag_output_type) == "R" then
 			f:write('  # mfrow - A vector of the form c(nr, nc). Subsequent figures will be drawn in an nr-by-nc array on the device by columns (mfcol), or rows (mfrow), respectively.' .. "\n")
 			f:write('  # mar - A numerical vector of the form c(bottom, left, top, right) which gives the number of lines of margin to be specified on the four sides of the plot. The default is c(5, 4, 4, 2) + 0.1.' .. "\n")
 			f:write('  # Ex: mfrow=c(3,2) == 3 rows, 2 columns of plots' .. "\n")
-			f:write('  par(mfrow=c(3,ceiling(nclass/3)))' .. "\n")
+			f:write('  par(mfrow=c(3,ceiling(nclass/3)), mar=c(5, 4, 4, 2) + 0.1)' .. "\n")
 			f:write("\n")
 			f:write('  # Iterate over each class, making both the plot and lines for each matrix' .. "\n")
 			f:write('  for(j in 1:nclass) {' .. "\n")
@@ -1491,7 +1542,8 @@ if string.upper(flag_output_type) == "R" then
 			f:write('    # ylab="" - label for y-axis (default: blank)' .. "\n")
 			f:write('    # xlab="" - label for x-axis (default: blank)' .. "\n")
 			
-			f:write('    label<-paste(classnames[j], "  (", round(lcp[j],1), ")", sep="")' .. "\n")
+			--f:write('    label<-paste(classnames[j], "  (", round(lcp[j],1), ")", sep="")' .. "\n")
+			f:write('    label<-legend.text[j]' .. "\n")
 			f:write('    plot(0,0,ylim=c(0,1),xlim=c(1,nvar),col=0,ylab="",xaxt="n",xlab="",main=label)' .. "\n")
 			f:write('    axis(1,at=seq(1:nvar),labels=varlab,las=2,xlab="",xlim=c(1,nvar))' .. "\n")
 			local ylines -- array of matrixes with data points
@@ -1503,9 +1555,9 @@ if string.upper(flag_output_type) == "R" then
 			if ylines then
 				for i,v in ipairs(ylines) do
 					if i == 1 then
-						f:write('    lines(x=rep(1:nvar),y=' .. v .. '[,j],lty=1,col=j)' .. "\n")
+						f:write('    lines(x=rep(1:nvar),y=' .. v .. '[,j],lty="solid",col=colors[j])' .. "\n")
 					else
-						f:write('    lines(x=rep(1:nvar),y=' .. v .. '[,j],lty=2,col=j)' .. "\n")
+						f:write('    lines(x=rep(1:nvar),y=' .. v .. '[,j],lty="dotted",col=colors[j])' .. "\n")
 					end
 				end -- for ylines
 			end
@@ -1562,7 +1614,7 @@ else -- flag_output_type
 	-- ## Locally Defined Functions ##
 	
 	-- Function for making a single Class + LCP string
-	-- Used separately with just R3STEP (formely Aux Var Reg) for now
+	-- Used separately with just R3STEP (formerly Aux Var Reg) for now
 	-- line - Current string we're adding to
 	-- class - class #
 	-- lcptable - table with LCP values per class
@@ -1758,7 +1810,7 @@ else -- flag_output_type
 				tables_written = tables_written + 1
 			end -- if rt["bchtable"]
 			
-			-- Write R3STEP (formely Aux Var Reg) Table results, if parsed
+			-- Write R3STEP (formerly Aux Var Reg) Table results, if parsed
 			if rt["r3steptable"] then
 				local section_header_string = patterns_by_section_hash[ "THE 3-STEP PROCEDURE" ]:getheaderstr( resultstable[n] )
 				
