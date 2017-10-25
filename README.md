@@ -33,8 +33,12 @@ For the convenience of Windows users I have both made a compiled executable usin
 
 The batch files themselves also have configurable options.
 
-## Example
+- `parse_mplus_all_files.bat` : Drag & drop a folder to create CSV output for all files given. Resulting output is in the same folder given (not in the parse_mplus folder, unless the .out files are there). May also be given a single file.
+- `parse_mplus_allfiles - R plots.bat` : Drag & drop a file to create R plotting script in the same folder as the file given. May also be given a folder to make R script for each Mplus .out file in the folder.
+- `parse_mplus_allfiles - Verbose Output.bat` : Same as parse_mplus_all_files.bat except outputs verbosely to a text file.
 
-
-
-
+## Example usage for Windows users
+- Download the current version from `releases` and unzip it anywhere.
+- Drag & drop your folder of Mplus .out files to either `parse_mplus_all_files.bat` (for CSV) or `parse_mplus_allfiles - R plots.bat` (for R plotting scripts).
+- See the folder given to parse_mplus for your output.
+- Configure as needed using `parse_mplus.conf`, `parse_mplus_template.R`, and editing the `SET` commands in the batch files.
