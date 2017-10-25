@@ -7,7 +7,9 @@
 
 require "../localization/localization"
 local strloc = strings_localized -- global from localization.lua
-local flag_verbosity = flag_verbosity -- global from main file (parse_mplus.lua)
+local flag_verbosity = PM_flag_verbosity -- global from main file (parse_mplus.lua)
+local mux_flags = PM_mux_flags -- global from main file (parse_mplus.lua)
+local flag_get_lcp = PM_flag_get_lcp -- global from main file (parse_mplus.lua)
 
 -- Returns a keyset for table t
 -- Used at bottom

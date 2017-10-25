@@ -51,6 +51,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 --]]
 
+PM_VERSION = '0.1'
+
 -- ################################################################
 -- # Static Defaults for command-line configuration
 -- #
@@ -58,13 +60,13 @@ SOFTWARE.
 -- #
 -- # These are NOT held in "optable"
 
-flag_verbosity = 1 -- Default is not to display "DEBUG: " and other superfluous messages
+PM_flag_verbosity = 1 -- Default is not to display "DEBUG: " and other superfluous messages
 
 -- FINAL CLASS COUNTS AND PROPORTIONS FOR THE LATENT CLASSES BASED ON THE ESTIMATED MODEL
-flag_get_lcp = true 
+PM_flag_get_lcp = true 
 
 -- These flags can be mutually exclusive
-mux_flags = {
+PM_mux_flags = {
 	["get_lcm"] = true, -- Latent Class Model Selection (multiple sections)
 	["get_cp"] = true, -- RESULTS IN PROBABILITY SCALE
 	["get_ci"] = true, -- CONFIDENCE INTERVALS IN PROBABILITY SCALE
@@ -73,7 +75,7 @@ mux_flags = {
 }
 
 -- type of output, default is CSV, other option is R or "NONE"
-flag_output_type = "CSV" -- nil also works here, defaulting to CSV
+local flag_output_type = "CSV" -- nil also works here, defaulting to CSV
 
 -- # End Command-line config defaults
 -- ################################################################
@@ -85,6 +87,15 @@ require "./includes/patterns" -- all patterns (a few in localization)
 
 local patterns_by_section_hash = patterns_by_section_hash
 local strloc = strings_localized
+
+if not strloc then
+	print( "** ERROR loading ./localization/localization" )
+	return -1
+end
+if not patterns_by_section_hash then
+	print( "** ERROR loading ./includes/patterns" )
+	return -1
+end
 
 -- ################################################################
 -- # Non-Configurable Defaults
@@ -205,10 +216,16 @@ end
 if not thisfile then thisfile = 'parse_mplus' end -- should never be needed
 
 -- Set default, can be changed with -o=filename option
+-- This is the outputted CSV filename.
 local outputfilename = thisfile .. ".csv"
 
 -- Set default, can be changed with -c=filename option
+-- This is the configuration filename.
 local conffilename = thisfile .. ".conf"
+
+-- Set default, can be changed with -r=filename option
+-- This is the filename for the R template script used in the R output.
+local rtemplatefilename = thisfile .. '_template.R'
 
 -- # End Get this file name
 -- ################################################################
@@ -355,7 +372,7 @@ local function parseConfigFile( suppressWarning )
 		}
 	}
 	
-	if flag_verbosity > 0 then print( "Reading config file: " .. conffilename ) end
+	if PM_flag_verbosity > 0 then print( "Reading config file: " .. conffilename ) end
 	local f = io.open( conffilename, "r" )
 	if f then
 		-- Inspired by https://rosettacode.org/wiki/Read_a_configuration_file#Lua
@@ -385,7 +402,7 @@ local function parseConfigFile( suppressWarning )
 							suboption1 = line:match( "^%S+%s+([^=]*[^=%s])%s*=" )
 						end
 						if not suboption1 then
-							if flag_verbosity > 0 then print( string.format("WARNING: Invalid or missing suboptions for option [%s] in [%s]", option, conffilename ) ) end
+							if PM_flag_verbosity > 0 then print( string.format("WARNING: Invalid or missing suboptions for option [%s] in [%s]", option, conffilename ) ) end
 							option = nil -- make next sanity check fail
 						else -- we have one or more suboptions
 							-- Currently, suboptions are all caps
@@ -400,23 +417,23 @@ local function parseConfigFile( suppressWarning )
 					-- Check if option doesn't exist
 					-- All valid options must have a default or set to false, never nil or uninitialized
 					if not option or not (optable[option] or optable[option] == false) then
-						if flag_verbosity > 0 then print( string.format("WARNING: Invalid option [%s] in [%s]", option, conffilename ) ) end
+						if PM_flag_verbosity > 0 then print( string.format("WARNING: Invalid option [%s] in [%s]", option, conffilename ) ) end
 					
 					-- single value
 					elseif not value then
-						if flag_verbosity > 0 then print( string.format("WARNING: Missing value for option [%s] in [%s]", option, conffilename ) ) end
+						if PM_flag_verbosity > 0 then print( string.format("WARNING: Missing value for option [%s] in [%s]", option, conffilename ) ) end
 					
 					-- single value
 					elseif not value:find( ',' ) then
 						-- Validate values
 						if type(optable[option]) == "number" then
 							value = tonumber(value)
-							if value == nil and flag_verbosity > 0 then print( string.format("WARNING: Invalid string value [%s] for option [%s] (number expected)", value, option) ) end
+							if value == nil and PM_flag_verbosity > 0 then print( string.format("WARNING: Invalid string value [%s] for option [%s] (number expected)", value, option) ) end
 						else
 							-- check if boolean
 							local v = value:lower()
 							if v == 'true' or v == 'false' or v == 't' or v == 'f' then
-								if type(optable[option]) ~= "boolean" and flag_verbosity > 0 then 
+								if type(optable[option]) ~= "boolean" and PM_flag_verbosity > 0 then 
 									print( string.format("WARNING: Invalid boolean value [%s] for option [%s] (option does not accept boolean)", value, option) )
 								else
 									value = ( v == 'true' or v == 't' )
@@ -434,7 +451,7 @@ local function parseConfigFile( suppressWarning )
 									optable[option][suboption1][tonumber(suboption2) or suboption2] = value
 								else -- only 1 suboption
 									-- currently, no options use only 1 suboption
-									if flag_verbosity > 0 then print( string.format("WARNING: Invalid suboption format for [%s] in [%s]", option, conffilename) ) end
+									if PM_flag_verbosity > 0 then print( string.format("WARNING: Invalid suboption format for [%s] in [%s]", option, conffilename) ) end
 								end
 							-- no suboption; check if option is an indexed table
 							elseif optable_indexed_tables[option] then
@@ -452,7 +469,7 @@ local function parseConfigFile( suppressWarning )
 							optable[option] = value
 						end
 							
-						if flag_verbosity > 1 then 
+						if PM_flag_verbosity > 1 then 
 							if suboption1 and suboption2 then
 								print( string.format("Set Option [%s][%s][%s] = [%s]", option, suboption1, suboption2, value) )
 							else
@@ -463,7 +480,7 @@ local function parseConfigFile( suppressWarning )
 					-- multiple values separated by commas
 					elseif suboption1 or suboption2 then
 						-- currently there are no suboptions with lists
-						if flag_verbosity > 0 then print( string.format("WARNING: Invalid suboption format for [%s] list in [%s]", option, conffilename) ) end
+						if PM_flag_verbosity > 0 then print( string.format("WARNING: Invalid suboption format for [%s] list in [%s]", option, conffilename) ) end
 					else
 						value = value .. ',' -- append , for parsing
 						-- Whether this option is an indexed table or not
@@ -477,12 +494,12 @@ local function parseConfigFile( suppressWarning )
 							else -- if hash, lowercase then check if valid entry
 								entry = string.lower(entry)
 								if not ( optable[option][entry] or optable[option][entry] == false ) then
-									if flag_verbosity > 0 then print( string.format("WARNING: Invalid entry for [%s] list in [%s]", option, conffilename) ) end
+									if PM_flag_verbosity > 0 then print( string.format("WARNING: Invalid entry for [%s] list in [%s]", option, conffilename) ) end
 								else
 									t[ entry ] = true
 								end
 							end
-							if flag_verbosity > 1 then print( string.format("Option [%s] add entry [%s]", option, entry) ) end
+							if PM_flag_verbosity > 1 then print( string.format("Option [%s] add entry [%s]", option, entry) ) end
 						end -- for entry
 						-- if we have a new, valid list then use it
 						if not isTableEmpty(t) then
@@ -511,7 +528,7 @@ local function parseConfigFile( suppressWarning )
 			end
 		end -- if remap_variable_categories
 
-	elseif not suppressWarning and flag_verbosity > 0 then
+	elseif not suppressWarning and PM_flag_verbosity > 0 then
 		print( string.format("WARNING: Cannot open config file [%s], skipping", conffilename) )
 	end -- if file opens for reading OK
 end -- parseConfigFile()
@@ -572,13 +589,25 @@ local argparameters = {
 						end
 					 end -- function
 	},
+	{ -- Set R template script filename
+		["key"] = '-r="FILENAME"',
+		["desc"] = "-r=filename Give a custom filename for the R template script (default: " .. rtemplatefilename .. ")",
+		["pattern"] = "^%-r=(.+)",
+		["dofunc"] = function ( m ) -- anonymous function
+						if m then
+							rtemplatefilename = m
+							print( "R template script filename set to: " .. rtemplatefilename )
+							return true
+						end
+					 end -- function
+	},
 	{ -- Set verbosity = 0
 		["key"] = '-s',
 		["desc"] = "-s\t\t Be quieter",
 		["pattern"] = "^%-s$",
 		["dofunc"] = function ( m )
 						if m then
-							flag_verbosity = 0
+							PM_flag_verbosity = 0
 							print( "Being mostly silent" )
 							return true
 						end
@@ -590,7 +619,7 @@ local argparameters = {
 		["pattern"] = "^%-v$",
 		["dofunc"] = function ( m )
 						if m then
-							flag_verbosity = 2
+							PM_flag_verbosity = 2
 							print( "Being more verbose" )
 							return true
 						end
@@ -602,7 +631,7 @@ local argparameters = {
 		["pattern"] = "^%-nolcp$",
 		["dofunc"] = function ( m )
 						if m then
-							flag_get_lcp = false
+							PM_flag_get_lcp = false
 							print( "NOTE: NOT parsing LCP values per user request" )
 							return true
 						end
@@ -614,8 +643,8 @@ local argparameters = {
 		["pattern"] = "^%-nolcm$",
 		["dofunc"] = function ( m )
 						if m then
-							mux_flags["get_lcm"] = false
-							if flag_verbosity > 1 then
+							PM_mux_flags["get_lcm"] = false
+							if PM_flag_verbosity > 1 then
 								print( "DEBUG: NOT parsing LCM values per user request" )
 							end
 							return true
@@ -629,13 +658,13 @@ local argparameters = {
 		["dofunc"] = function ( m )
 						if m then
 							local flag
-							for flag in pairs(mux_flags) do
+							for flag in pairs(PM_mux_flags) do
 								if flag == "get_lcm" then
-									mux_flags[flag] = true
+									PM_mux_flags[flag] = true
 								else
-									mux_flags[flag] = false
+									PM_mux_flags[flag] = false
 								end
-							end -- for mux_flags
+							end -- for PM_mux_flags
 							print( "NOTE: Parsing ONLY LCM values per user request" )
 							return true
 						end
@@ -647,8 +676,8 @@ local argparameters = {
 		["pattern"] = "^%-nobch$",
 		["dofunc"] = function ( m )
 						if m then
-							mux_flags["get_bch"] = false
-							if flag_verbosity > 1 then
+							PM_mux_flags["get_bch"] = false
+							if PM_flag_verbosity > 1 then
 								print( "DEBUG: NOT parsing BCH values per user request" )
 							end
 							return true
@@ -662,13 +691,13 @@ local argparameters = {
 		["dofunc"] = function ( m )
 						if m then
 							local flag
-							for flag in pairs(mux_flags) do
+							for flag in pairs(PM_mux_flags) do
 								if flag == "get_bch" then
-									mux_flags[flag] = true
+									PM_mux_flags[flag] = true
 								else
-									mux_flags[flag] = false
+									PM_mux_flags[flag] = false
 								end
-							end -- for mux_flags
+							end -- for PM_mux_flags
 							print( "NOTE: Parsing ONLY BCH values per user request. May include LCP." )
 							return true
 						end
@@ -680,7 +709,7 @@ local argparameters = {
 		["pattern"] = "^%-nor3step$",
 		["dofunc"] = function ( m )
 						if m then
-							mux_flags["get_r3step"] = false
+							PM_mux_flags["get_r3step"] = false
 							print( "NOTE: NOT parsing R3STEP (Auxiliary Variable Regression) values per user request" )
 							return true
 						end
@@ -693,13 +722,13 @@ local argparameters = {
 		["dofunc"] = function ( m )
 						if m then
 							local flag
-							for flag in pairs(mux_flags) do
+							for flag in pairs(PM_mux_flags) do
 								if flag == "get_r3step" then
-									mux_flags[flag] = true
+									PM_mux_flags[flag] = true
 								else
-									mux_flags[flag] = false
+									PM_mux_flags[flag] = false
 								end
-							end -- for mux_flags
+							end -- for PM_mux_flags
 							print( "NOTE: Parsing ONLY R3STEP (Auxiliary Variable Regression) values per user request. May include LCP." )
 							return true
 						end
@@ -711,7 +740,7 @@ local argparameters = {
 		["pattern"] = "^%-nocp$",
 		["dofunc"] = function ( m )
 						if m then
-							mux_flags["get_cp"] = false
+							PM_mux_flags["get_cp"] = false
 							print( "NOTE: NOT parsing CP values per user request" )
 							return true
 						end
@@ -724,13 +753,13 @@ local argparameters = {
 		["dofunc"] = function ( m )
 						if m then
 							local flag
-							for flag in pairs(mux_flags) do
+							for flag in pairs(PM_mux_flags) do
 								if flag == "get_cp" then
-									mux_flags[flag] = true
+									PM_mux_flags[flag] = true
 								else
-									mux_flags[flag] = false
+									PM_mux_flags[flag] = false
 								end
-							end -- for mux_flags
+							end -- for PM_mux_flags
 							print( "NOTE: Parsing ONLY CP values per user request. May include LCP." )
 							return true
 						end
@@ -742,7 +771,7 @@ local argparameters = {
 		["pattern"] = "^%-noci$",
 		["dofunc"] = function ( m )
 						if m then
-							mux_flags["get_ci"] = false
+							PM_mux_flags["get_ci"] = false
 							print( "NOTE: NOT parsing CI values per user request" )
 							return true
 						end
@@ -755,13 +784,13 @@ local argparameters = {
 		["dofunc"] = function ( m )
 						if m then
 							local flag
-							for flag in pairs(mux_flags) do
+							for flag in pairs(PM_mux_flags) do
 								if flag == "get_ci" then
-									mux_flags[flag] = true
+									PM_mux_flags[flag] = true
 								else
-									mux_flags[flag] = false
+									PM_mux_flags[flag] = false
 								end
-							end -- for mux_flags
+							end -- for PM_mux_flags
 							print( "NOTE: Parsing ONLY CI values per user request. May include LCP." )
 							return true
 						end
@@ -789,6 +818,7 @@ if not arg[1] then
 	print('\nParse one or more given Mplus output text files for specific keywords within sections,' )
 	print('generating CSV tables or R script output.' )
 	print('Author: Matthew Carras')
+	print('Version: ' .. PM_VERSION)
 	print('\nUsage:' .. ((thisfileext == ".lua" and ' lua ') or ' ') .. thisfile .. 
 		 thisfileext .. '[-o="filename"] "file1.out" "file2.out" "file3.out" ...'
 	)
@@ -810,7 +840,7 @@ end
 -- NOTE: Argument checking is done earlier, before configuration parsing
 
 -- Print all section headers, if set to max verbosity
-if flag_verbosity > 1 then
+if PM_flag_verbosity > 1 then
 	print( "DEBUG: ALL SECTION HEADERS")
 	for k in pairs(patterns_by_section_hash) do
 		print( k )
@@ -848,7 +878,7 @@ while arg[n] do
 				-- Check line first for new section header
 				local m = string.match(line, pattern_section_header)
 				if m then
-					if flag_verbosity > 1 then print( string.format("DEBUG: POSSIBLE SECTION [%s]", m) ) end
+					if PM_flag_verbosity > 1 then print( string.format("DEBUG: POSSIBLE SECTION [%s]", m) ) end
 					-- is it a known pattern? check localization table then patterns_by_section_hash (get nil if not)
 					cursection = strloc[m]
 					if cursection and patterns_by_section_hash[ cursection ] then
@@ -862,7 +892,7 @@ while arg[n] do
 					if cursection then
 						-- reset section_vars
 						section_vars = { ["cursection"] = cursection }
-						if flag_verbosity > 1 then print(string.format("DEBUG: CURRENT SECTION IS [%s]", cursection)) end
+						if PM_flag_verbosity > 1 then print(string.format("DEBUG: CURRENT SECTION IS [%s]", cursection)) end
 					end -- if cursection
 				elseif cursection then 	-- If we are currently in a section
 					
@@ -884,8 +914,8 @@ while arg[n] do
 			f:close() -- done with this file
 			
 			-- ** Print results to console **
-			if flag_verbosity > 0 then
-				if flag_verbosity > 1 then print('') end
+			if PM_flag_verbosity > 0 then
+				if PM_flag_verbosity > 1 then print('') end
 				
 				-- Fancy way of just calling print once, where .. is string concat
 				print("************************************************" ..
@@ -934,10 +964,10 @@ while arg[n] do
 					print( "SUCCESSFULLY PARSED: " .. strloc[ "TECHNICAL 14 OUTPUT" ] )
 				end
 				print("************************************************")
-			end -- if flag_verbosity > 0
+			end -- if PM_flag_verbosity > 0
 		else -- could not open the file for some reason
-			print(string.format("** ERROR: Could not open file [%s]", file))
-			return -1
+			print(string.format("** ERROR: Could not open file for parsing [%s]", file))
+			return -2
 		end -- end if io.input succeeds
 	end -- if argument
 	
@@ -952,8 +982,8 @@ end -- while arg[n]
 -- # Output R script for plotting
 
 if string.upper(flag_output_type) == "R" then
-	if flag_verbosity > 0 then print('') end
-	if flag_verbosity > 1 then print("DEBUG: Making R script files\n") end
+	if PM_flag_verbosity > 0 then print('') end
+	if PM_flag_verbosity > 1 then print("DEBUG: Making R script files\n") end
 	
 	-- Pre-parse to check and see if we actually have results
 	local _,rt,k,t
@@ -976,7 +1006,7 @@ if string.upper(flag_output_type) == "R" then
 	for _,rt in pairs(resultstable) do
 		-- Get actual filename, minus preceeding path involved and minus extension
 		local filename,fileext = string.match(rt["filename"],".*[\\/]([^\\/]+)(%..*)")
-		local filename_outfile
+		local filename_outfile,filename_only
 		if not filename then
 			filename = string.match(rt["filename"],".*[\\/]([^\\/]+)")
 			if not filename then
@@ -987,20 +1017,26 @@ if string.upper(flag_output_type) == "R" then
 			end
 		end -- if filename
 		filename_outfile = filename .. fileext
+		filename_only = filename
 		filename = filename .. '.R'
 		
 		-- open file for output
 		local f = io.output( filename )
 		if not f then
-			print( string.format("** ERROR: Could not open output file [%s]", filename ) )
+			print( string.format("** ERROR: Could not open R output script file [%s]", filename ) )
 			return -4
 		end
 		f:write('# Plot R script automatically generated by [' .. thisfile .. ']' .. "\n")
 		f:write("\n")
-		f:write( "# File: " .. filename_outfile .. "\n")
+		f:write( "# Mplus Output File: " .. filename_outfile .. "\n")
 		f:write("\n")
 		
 		f:write('# NOTE: You will see some commented out code, which just gives you extra options and additional variables not used by the default logic.' .. "\n")
+		f:write("\n")
+		
+		f:write("\n")
+		f:write('# Filename without extension for outputting images' .. "\n")
+		f:write( 'output_filename<-"' .. filename_only .. '"' .. "\n")
 		f:write("\n")
 		
 		-- LCP Values
@@ -1066,249 +1102,13 @@ if string.upper(flag_output_type) == "R" then
 				f:write( "# Re-ordering variables based on given category_output_order\n" .. "\n")
 				varlist = optable[ "category_output_order" ]
 			end
-			nvar = #varlist
+			if not isTableEmpty( varlist ) then
+				nvar = #varlist
 			
-			f:write("# Number of variables" .. "\n")
-			f:write("# NOTE: nvar here does not apply to BCH or R3STEP variables\n")
-			f:write('nvar<-' .. nvar .. "\n")
-			f:write("\n")
-			
-			local i,var,variables
-			for i,var in pairs(varlist) do 
-				-- save list of variables formatted as strings
-				-- format is quoted to be used in other languages
-				if not variables then 
-					variables = '"' .. var .. '"'
-				else
-					variables = variables .. ',"' .. var .. '"'
-				end
-			end -- for varlist
-			f:write("# Labels for X axis (variable names)\n")
-			if variables then
-				f:write( "varlab<-c(" .. variables .. ')' .. "\n")
-			else
-				f:write( "# ** WARNING: No variables parsed!" .. "\n")
-			end
-			f:write("\n")
-			
-			if rt["citable"] then
-				-- Write Section header as R comment
-				f:write('# ' .. strloc[ "CONFIDENCE INTERVALS IN PROBABILITY SCALE" ]  .. "\n")
+				f:write("# Number of variables" .. "\n")
+				f:write("# NOTE: nvar here does not apply to BCH or R3STEP variables\n")
+				f:write('nvar<-' .. nvar .. "\n")
 				f:write("\n")
-					
-				-- Comment out (in R code) matrixes we aren't using
-				local output_matrixes = {
-					{
-						["name"] = "ciestimates",
-						["flag"] = "estimate"
-					},
-					{
-						["name"] = "cilower2p5",
-						["flag"] = "lower ci bound 2.5%"
-					},
-					{
-						["name"] = "ciupper2p5",
-						["flag"] = "upper ci bound 2.5%"
-					},
-					{
-						["name"] = "cilower0p5",
-						["flag"] = "lower ci bound 0.5%"
-					},
-					{
-						["name"] = "ciupper0p5",
-						["flag"] = "upper ci bound 0.5%"
-					},
-					{
-						["name"] = "cilower5p0",
-						["flag"] = "lower ci bound 5%"
-					},
-					{
-						["name"] = "ciupper5p0",
-						["flag"] = "upper ci bound 5%"
-					}
-				} -- output_matrixes{}
-				
-				f:write("# CI Matrixes\n")
-				local line = "_matrix<-matrix(nrow=nvar,ncol=nclass)"  .. "\n"
-				local _,v
-				for _,v in ipairs(output_matrixes) do
-					if optable[ "citable_output_columns" ][ v["flag"] ] then
-						f:write( v["name"] .. line )
-					else -- write it, but comment it out
-						f:write( '#' .. v["name"] .. line )
-					end
-				end -- for output_matrixes
-				f:write("\n")
-				f:write("# Add in parsed data per variable index, where vector length=nclass\n")
-				f:write("# Ex: a_matrix[1,1] would be the value for variable 1, class 1\n")
-				local cat,class,v,catvalue
-				for i,var in pairs(varlist) do 
-					-- Check to see if we need to remap this variable
-					-- remap_variable_categories_lookup[remap] = { ["origvar"] = k, ["cat"] = i }
-					if remap_variable_categories_lookup[var] then
-						cat = remap_variable_categories_lookup[var]["cat"]
-						var = remap_variable_categories_lookup[var]["origvar"]
-					-- Check to see if we're doing anything else special with this variable
-					elseif optable["remap_categories"][var] then
-						-- Shouldn't get here
-						f:write( '# ERROR in variable remap lookup for [' .. var .. ']\n' )
-					else
-						cat = optable[ "citable_default_category" ]
-					end
-
-					-- Assign values from current variable to R matrix for each class
-					local values = {}
-					for class = 1,nclass do
-						-- resultstable[n]["citable"][varname][class #][category #][value name]
-						catvalue = rt["citable"][var][class][cat]
-						local _,t
-						for _,t in ipairs(output_matrixes) do
-							v = catvalue[ t["flag"] ]
-							if not values[ t["name"] ] then
-								values[ t["name"] ] = v
-							else
-								values[ t["name"] ] = values[ t["name"] ] .. ',' .. v
-							end
-						end -- for output_matrixes
-					end -- for 1,nclass
-					local line = "_matrix[%d,]<-c(%s)"  .. "\n"
-					for _,v in ipairs(output_matrixes) do
-						if optable[ "citable_output_columns" ][ v["flag"] ] then
-							f:write( string.format(v["name"] .. line, i, values[ v["name"] ]) )
-						else -- write it, but comment it out
-							f:write( '#' .. string.format(v["name"] .. line, i, values[ v["name"] ]) )
-						end
-					end -- for output_matrixes
-				end -- for varlist
-				f:write('\n')
-			end -- if rt["citable"] then
-			
-			if rt["cptable"] then
-				-- Write Section header as R comment
-				f:write('# ' .. strloc[ "RESULTS IN PROBABILITY SCALE" ]  .. "\n")
-				f:write("\n")
-					
-				-- Comment out (in R code) matrixes we aren't using
-				local output_matrixes = {
-					{
-						["name"] = "cpestimates",
-						["flag"] = "estimate"
-					},
-					{
-						["name"] = "cpse",
-						["flag"] = "s.e."
-					},
-					{
-						["name"] = "cpestse",
-						["flag"] = "est./s.e."
-					},
-					{
-						["name"] = "cppvalue",
-						["flag"] = "two-tailed p-value"
-					}
-				} -- output_matrixes{}
-				
-				f:write("# CP Matrixes\n")
-				local line = "_matrix<-matrix(nrow=nvar,ncol=nclass)"  .. "\n"
-				local _,v
-				for _,v in ipairs(output_matrixes) do
-					if optable["cptable_output_columns"][ v["flag"] ] then
-						f:write( v["name"] .. line )
-					else -- write it, but comment it out
-						f:write( '#' .. v["name"] .. line )
-					end
-				end -- for output_matrixes
-				f:write("\n")
-				f:write("# Add in parsed data per variable index, where vector length=nclass\n")
-				f:write("# Ex: a_matrix[1,1] would be the value for variable 1, class 1\n")
-				local cat,class,v,catvalue
-				for i,var in pairs(varlist) do 
-					-- Check to see if we need to remap this variable
-					-- remap_variable_categories_lookup[remap] = { ["origvar"] = k, ["cat"] = i }
-					if remap_variable_categories_lookup[var] then
-						cat = remap_variable_categories_lookup[var]["cat"]
-						var = remap_variable_categories_lookup[var]["origvar"]
-					-- Check to see if we're doing anything else special with this variable
-					elseif optable["remap_categories"][var] then
-						-- Shouldn't get here
-						f:write( '# ERROR in variable remap lookup for [' .. var .. ']\n' )
-					else
-						cat = optable[ "cptable_default_category" ]
-					end
-
-					-- Assign values from current variable to R matrix for each class
-					local values = {}
-					for class = 1,nclass do
-						-- resultstable[n]["cptable"][varname][class #][category #][value name]
-						catvalue = rt["cptable"][var][class][cat]
-						local _,t
-						for _,t in ipairs(output_matrixes) do
-							v = catvalue[ t["flag"] ]
-							if not values[ t["name"] ] then
-								values[ t["name"] ] = v
-							else
-								values[ t["name"] ] = values[ t["name"] ] .. ',' .. v
-							end
-						end -- for output_matrixes
-					end -- for 1,nclass
-					local line = "_matrix[%d,]<-c(%s)"  .. "\n"
-					for _,v in ipairs(output_matrixes) do
-						if optable["cptable_output_columns"][ v["flag"] ] then
-							f:write( string.format(v["name"] .. line, i, values[ v["name"] ]) )
-						else -- write it, but comment it out
-							f:write( '#' .. string.format(v["name"] .. line, i, values[ v["name"] ]) )
-						end
-					end -- for output_matrixes
-				end -- for varlist
-				f:write('\n')
-			end -- if rt["cptable"]
-
-			if rt["bchtable"] then
-				-- Write Section header as R comment
-				f:write( '# ' .. patterns_by_section_hash[ "EQUALITY TESTS OF MEANS ACROSS CLASSES USING THE BCH PROCEDURE WITH N DEGREE(S) OF FREEDOM FOR THE OVERALL TEST" ]:getheaderstr( rt ) .. "\n")
-				
-				local varlist = rt["bchtable"]["#vars_in_orig_order"]
-				
-				-- local optable[ "bchtable_output_columns" ] = { 
-					-- ["Mean"] = true,
-					-- ["S.E."] = true,
-					-- ["overall"] = true,
-					-- ["overall_chi_sq"] = true,
-					-- ["overall_p_value"] = true,
-					-- ["classx_vs_classy"] = false,
-					-- ["classx_vs_classy_chi_sq"] = false,
-					-- ["classx_vs_classy_p_value"] = false
-				-- }
-				
-				-- Comment out (in R code) matrixes we aren't using
-				local output_matrixes = {
-					{
-						["name"] = "bchmean",
-						["flag"] = "mean",
-						["parentkey"] = "classes",
-						["key"] = "mean"
-					},
-					{
-						["name"] = "bchse",
-						["flag"] = "s.e.",
-						["parentkey"] = "classes",
-						["key"] = "s.e."
-					}
-				} -- output_matrixes{}
-				local output_vectors = {
-					{
-						["name"] = "bchoverall_chi_sq",
-						["flag"] = "overall_chi_sq",
-						["parentkey"] = "overall",
-						["key"] = "chi-sq"
-					},
-					{
-						["name"] = "bchoverall_p_value",
-						["flag"] = "overall_p_value",
-						["parentkey"] = "overall",
-						["key"] = "p-value"
-					}
-				} -- output_vectors{}
 				
 				local i,var,variables
 				for i,var in pairs(varlist) do 
@@ -1320,6 +1120,239 @@ if string.upper(flag_output_type) == "R" then
 						variables = variables .. ',"' .. var .. '"'
 					end
 				end -- for varlist
+				f:write("# Labels for X axis (variable names)\n")
+				if variables then
+					f:write( "varlab<-c(" .. variables .. ')' .. "\n")
+				else
+					f:write( "# ** WARNING: No variables parsed!" .. "\n")
+				end
+				f:write("\n")
+				
+				if rt["citable"] then
+					-- Write Section header as R comment
+					f:write('# ' .. strloc[ "CONFIDENCE INTERVALS IN PROBABILITY SCALE" ]  .. "\n")
+					f:write("\n")
+						
+					-- Comment out (in R code) matrixes we aren't using
+					local output_matrixes = {
+						{
+							["name"] = "ciestimates",
+							["flag"] = "estimate"
+						},
+						{
+							["name"] = "cilower2p5",
+							["flag"] = "lower ci bound 2.5%"
+						},
+						{
+							["name"] = "ciupper2p5",
+							["flag"] = "upper ci bound 2.5%"
+						},
+						{
+							["name"] = "cilower0p5",
+							["flag"] = "lower ci bound 0.5%"
+						},
+						{
+							["name"] = "ciupper0p5",
+							["flag"] = "upper ci bound 0.5%"
+						},
+						{
+							["name"] = "cilower5p0",
+							["flag"] = "lower ci bound 5%"
+						},
+						{
+							["name"] = "ciupper5p0",
+							["flag"] = "upper ci bound 5%"
+						}
+					} -- output_matrixes{}
+					
+					f:write("# CI Matrixes\n")
+					f:write("# Construct matixes with all data of nvar x nclass\n")
+					f:write("# Ex: a_matrix[1,1] would be the value for variable 1, class 1\n")
+					f:write("# Also set rownames (varlab) and colnames (classnames) for easy index and output\n")
+					local class
+					local allvalues = {} -- allvalues strings, nvar x nclass, hashed by output_matrixes
+					for class = 1,nclass do
+						local i,var
+						for i,var in pairs(varlist) do 
+							local cat,catvalue
+							-- Check to see if we need to remap this variable
+							-- remap_variable_categories_lookup[remap] = { ["origvar"] = k, ["cat"] = i }
+							if remap_variable_categories_lookup[var] then
+								cat = remap_variable_categories_lookup[var]["cat"]
+								var = remap_variable_categories_lookup[var]["origvar"]
+							-- Check to see if we're doing anything else special with this variable
+							elseif optable["remap_categories"][var] then
+								-- Shouldn't get here
+								f:write( '# ERROR in variable remap lookup for [' .. var .. ']\n' )
+							else
+								cat = optable[ "citable_default_category" ]
+							end
+							
+							catvalue = rt["citable"][var][class][cat]
+							local _,t
+							for _,t in ipairs(output_matrixes) do
+								local v = catvalue[ t["flag"] ]
+								if not allvalues[ t["name"] ] then
+									allvalues[ t["name"] ] = v
+								else
+									allvalues[ t["name"] ] = allvalues[ t["name"] ] .. ',' .. v
+								end
+							end -- for output_matrixes
+						end -- for varlist
+					end -- for nclass
+					
+					local _,v
+					for _,v in ipairs(output_matrixes) do
+						local matrix_line = string.format("%s_matrix<-matrix(nrow=nvar,ncol=nclass,dimnames=list(varlab,classnames),data=c(%s))\n", v["name"], allvalues[ v["name"] ] )
+						if optable[ "citable_output_columns" ][ v["flag"] ] then
+							f:write( matrix_line )
+						else
+							-- write it, but comment it out by default
+							f:write( '#' .. matrix_line )
+						end
+					end -- for output_matrixes
+					f:write('\n')
+				end -- if rt["citable"] then
+				
+				if rt["cptable"] then
+					-- Write Section header as R comment
+					f:write('# ' .. strloc[ "RESULTS IN PROBABILITY SCALE" ]  .. "\n")
+					f:write("\n")
+						
+					-- Comment out (in R code) matrixes we aren't using
+					local output_matrixes = {
+						{
+							["name"] = "cpestimates",
+							["flag"] = "estimate"
+						},
+						{
+							["name"] = "cpse",
+							["flag"] = "s.e."
+						},
+						{
+							["name"] = "cpestse",
+							["flag"] = "est./s.e."
+						},
+						{
+							["name"] = "cppvalue",
+							["flag"] = "two-tailed p-value"
+						}
+					} -- output_matrixes{}
+					
+					f:write("# CP Matrixes\n")
+					f:write("# Construct matixes with all data of nvar x nclass\n")
+					f:write("# Ex: a_matrix[1,1] would be the value for variable 1, class 1\n")
+					f:write("# Also set rownames (varlab) and colnames (classnames) for easy index and output\n")
+					local class
+					local allvalues = {} -- allvalues strings, nvar x nclass, hashed by output_matrixes
+					for class = 1,nclass do
+						local i,var
+						for i,var in pairs(varlist) do 
+							local cat,catvalue
+							-- Check to see if we need to remap this variable
+							-- remap_variable_categories_lookup[remap] = { ["origvar"] = k, ["cat"] = i }
+							if remap_variable_categories_lookup[var] then
+								cat = remap_variable_categories_lookup[var]["cat"]
+								var = remap_variable_categories_lookup[var]["origvar"]
+							-- Check to see if we're doing anything else special with this variable
+							elseif optable["remap_categories"][var] then
+								-- Shouldn't get here
+								f:write( '# ERROR in variable remap lookup for [' .. var .. ']\n' )
+							else
+								cat = optable[ "cptable_default_category" ]
+							end
+							
+							catvalue = rt["cptable"][var][class][cat]
+							local _,t
+							for _,t in ipairs(output_matrixes) do
+								local v = catvalue[ t["flag"] ]
+								if not allvalues[ t["name"] ] then
+									allvalues[ t["name"] ] = v
+								else
+									allvalues[ t["name"] ] = allvalues[ t["name"] ] .. ',' .. v
+								end
+							end -- for output_matrixes
+						end -- for varlist
+					end -- for nclass
+					
+					local _,v
+					for _,v in ipairs(output_matrixes) do
+						local matrix_line = string.format("%s_matrix<-matrix(nrow=nvar,ncol=nclass,dimnames=list(varlab,classnames),data=c(%s))\n", v["name"], allvalues[ v["name"] ] )
+						if optable[ "cptable_output_columns" ][ v["flag"] ] then
+							f:write( matrix_line )
+						else
+							-- write it, but comment it out by default
+							f:write( '#' .. matrix_line )
+						end
+					end -- for output_matrixes
+					f:write('\n')
+				end -- if rt["cptable"]
+			end -- if not isTableEmpty(varlist)
+		end -- if rt["cptable"] or rt["citable"]
+		
+		if rt["bchtable"] then
+			-- Write Section header as R comment
+			f:write( '# ' .. patterns_by_section_hash[ "EQUALITY TESTS OF MEANS ACROSS CLASSES USING THE BCH PROCEDURE WITH N DEGREE(S) OF FREEDOM FOR THE OVERALL TEST" ]:getheaderstr( rt ) .. "\n")
+			
+			-- local optable[ "bchtable_output_columns" ] = { 
+				-- ["Mean"] = true,
+				-- ["S.E."] = true,
+				-- ["overall"] = true,
+				-- ["overall_chi_sq"] = true,
+				-- ["overall_p_value"] = true,
+				-- ["classx_vs_classy"] = false,
+				-- ["classx_vs_classy_chi_sq"] = false,
+				-- ["classx_vs_classy_p_value"] = false
+			-- }
+			
+			-- Comment out (in R code) matrixes we aren't using
+			local output_matrixes = {
+				{
+					["name"] = "bchmean",
+					["flag"] = "mean",
+					["parentkey"] = "classes",
+					["key"] = "mean"
+				},
+				{
+					["name"] = "bchse",
+					["flag"] = "s.e.",
+					["parentkey"] = "classes",
+					["key"] = "s.e."
+				}
+			} -- output_matrixes{}
+			-- Overall values (not per class)
+			local output_vectors = {
+				{
+					["name"] = "bchoverall_chi_sq",
+					["flag"] = "overall_chi_sq",
+					["parentkey"] = "overall",
+					["key"] = "chi-sq"
+				},
+				{
+					["name"] = "bchoverall_p_value",
+					["flag"] = "overall_p_value",
+					["parentkey"] = "overall",
+					["key"] = "p-value"
+				}
+			} -- output_vectors{}
+			
+			local varlist = rt["bchtable"]["#vars_in_orig_order"]
+			
+			if not isTableEmpty(varlist) then
+				f:write("\n")
+				f:write('bch_nvar<-' .. #varlist .. "\n")
+			
+				local i,var,variables
+				for i,var in pairs(varlist) do 
+					-- save list of variables formatted as strings
+					-- format is quoted to be used in other languages
+					if not variables then 
+						variables = '"' .. var .. '"'
+					else
+						variables = variables .. ',"' .. var .. '"'
+					end
+				end -- for varlist
+				f:write("\n")
 				f:write("# BCH variable names\n")
 				if variables then
 					f:write( "bch_varlab<-c(" .. variables .. ')' .. "\n")
@@ -1327,28 +1360,56 @@ if string.upper(flag_output_type) == "R" then
 					f:write( "# ** WARNING: No variables parsed!" .. "\n")
 				end
 				f:write("\n")
+			
+				f:write("# BCH Matrixes and Vectors\n")
+				f:write("# Construct matixes with all data of nvar x nclass\n")
+				f:write("# Ex: a_matrix[1,1] would be the value for variable 1, class 1\n")
+				f:write("# Also set rownames (varlab) and colnames (classnames) for easy index and output\n")
+				f:write("# Vectors are used where values are not per class (IE, Overall)\n")
+
+				-- First, write out matrixes
+				local class
+				local allvalues = {} -- allvalues strings, nvar x nclass, hashed by output_matrixes
+				for class = 1,nclass do
+					local i,var
+					for i,var in pairs(varlist) do 
+						-- resultstable[n]["bchtable"][varname]["classes"][class #] OR resultstable[n]["bchtable"][varname]["overall"]
+						local _,t
+						for _,t in ipairs(output_matrixes) do
+							local value = nil
+							if t["parentkey"] == "classes" then
+								value = rt["bchtable"][var]["classes"][class]
+							end
+							if value ~= nil then
+								local v = value[ t["key"] ]
+								if not values[ t["name"] ] then
+									allvalues[ t["name"] ] = v
+								else
+									allvalues[ t["name"] ] = allvalues[ t["name"] ] .. ',' .. v
+								end
+							end -- if value
+						end -- for output_matrixes
+					end -- for varlist
+				end -- for nclass
 				
-				f:write("# BCH Mean, S.E. Matrixes, Overall Chi-Sq, Overall P-Value Vectors\n")
-				local line = "_matrix<-matrix(nrow=nvar,ncol=nclass)"  .. "\n"
 				local _,v
 				for _,v in ipairs(output_matrixes) do
+					local matrix_line = string.format("%s_matrix<-matrix(nrow=bch_nvar,ncol=nclass,dimnames=list(bch_varlab,classnames),data=c(%s))\n", v["name"], allvalues[ v["name"] ] )
 					if optable[ "bchtable_output_columns" ][ v["flag"] ] then
-						f:write( v["name"] .. line )
-					else -- write it, but comment it out
-						f:write( '#' .. v["name"] .. line )
+						f:write( matrix_line )
+					else
+						-- write it, but comment it out by default
+						f:write( '#' .. matrix_line )
 					end
 				end -- for output_matrixes
-				f:write("\n")
-				f:write("# Add in parsed data per variable index, where vector length=nclass\n")
-				f:write("# Ex: a_matrix[1,1] would be the value for variable 1, class 1\n")
-				f:write("# NOTE: The BCH overall values are vectors indexed by variable\n")
-				local class,v,value
+				
+				-- Next, write out vectors (Overall, etc.)
 				local vector_values = {}
 				for i,var in pairs(varlist) do 
 					-- Assign values from current variable to R vector
 					-- Overall values
 					for _,t in ipairs(output_vectors) do
-						v = nil
+						local v = nil
 						if t["parentkey"] then
 							v = rt["bchtable"][var][ t["parentkey"] ][ t["key"] ]
 						end
@@ -1360,68 +1421,47 @@ if string.upper(flag_output_type) == "R" then
 							end
 						end
 					end -- for output_vectors
-					
-					-- Assign values from current variable to R matrix for each class
-					local values = {}
-					for class = 1,nclass do
-						-- resultstable[n]["bchtable"][varname]["classes"][class #] OR resultstable[n]["bchtable"][varname]["overall"]
-						local _,t
-						for _,t in ipairs(output_matrixes) do
-							value = nil
-							if t["parentkey"] == "classes" then
-								value = rt["bchtable"][var]["classes"][class]
-							end
-							if value ~= nil then
-								v = value[ t["key"] ]
-								if not values[ t["name"] ] then
-									values[ t["name"] ] = v
-								else
-									values[ t["name"] ] = values[ t["name"] ] .. ',' .. v
-								end
-							end -- if value
-						end -- for output_matrixes
-					end -- for 1,nclass
-					local line = "_matrix[%d,]<-c(%s)"  .. "\n"
-					for _,v in ipairs(output_matrixes) do
-						if optable[ "bchtable_output_columns" ][ v["flag"] ] then
-							f:write( string.format(v["name"] .. line, i, values[ v["name"] ]) )
-						else -- write it, but comment it out
-							f:write( '#' .. string.format(v["name"] .. line, i, values[ v["name"] ]) )
-						end
-					end -- for output_matrixes
 				end -- for varlist
+				
 				-- Finally, assign the vector values
 				if not isTableEmpty(vector_values) then
 					f:write('\n')
 					f:write("# The BCH overall values are vectors indexed by variable\n")
 					f:write("# a_vector[1] would be the value for the 1st variable according to order in varlab (bch_varlab)\n")
-					local line = "_vector<-c(%s)"  .. "\n"
 					for _,v in ipairs(output_vectors) do
+						local vector_line = string.format("%s_vector<-c(%s)\n", v["name"], vector_values[ v["name"] ])
 						if optable[ "bchtable_output_columns" ][ v["flag"] ] then
-							f:write( string.format(v["name"] .. line, vector_values[ v["name"] ]) )
+							f:write( vector_line )
 						else -- write it, but comment it out
-							f:write( '#' .. string.format(v["name"] .. line, vector_values[ v["name"] ]) )
+							f:write( '#' .. vector_line )
 						end
 					end -- for output_vectors
 				end -- if not isTableEmpty(vector_values)
-				f:write('\n')
-			end -- if rt["bchtable"]
+			end -- if not isTableEmpty(varlist)
+			f:write('\n')
+		end -- if rt["bchtable"]
 
-			if rt["r3steptable"] then
-				-- Write Section header as R comment
-				f:write( '# ' .. patterns_by_section_hash[ "THE 3-STEP PROCEDURE" ]:getheaderstr( rt ) .. "\n" )
-				f:write("\n")
-				f:write("# ** NOT IMPLEMENTED **" .. "\n")
-				
-				-- local optable[ "r3step_output_columns" ] = { 
-					-- ["Estimate"] = true,
-					-- ["S.E."] = true,
-					-- ["Est./S.E."] = false,
-					-- ["Two-Tailed P-Value"] = true,
-					-- ["#byrefclass"] = true -- output one table per reference class / parameterization
-				-- }	
-			end
+		if rt["r3steptable"] then
+			-- Write Section header as R comment
+			f:write( '# ' .. patterns_by_section_hash[ "THE 3-STEP PROCEDURE" ]:getheaderstr( rt ) .. "\n" )
+			f:write("\n")
+			f:write("# ** NOT IMPLEMENTED **" .. "\n")
 			
+			-- local optable[ "r3step_output_columns" ] = { 
+				-- ["Estimate"] = true,
+				-- ["S.E."] = true,
+				-- ["Est./S.E."] = false,
+				-- ["Two-Tailed P-Value"] = true,
+				-- ["#byrefclass"] = true -- output one table per reference class / parameterization
+			-- }	
+		end
+		
+		-- ** Rest of plotting code			
+		f:write('# SETUP PLOT PARAMETERS' .. "\n")
+		
+		-- Code required for parse_mplus_template.R 
+		-- Needs: colors, ylabel, and xlabel defined
+		do 
 			local line = "colors<-c(1"
 			local c
 			for i = 2,nclass do
@@ -1432,142 +1472,36 @@ if string.upper(flag_output_type) == "R" then
 				line = line .. ',' .. c
 			end
 			line = line .. ')'
-				
-			-- ** Rest of plotting code			
-			f:write('# SETUP PLOT PARAMETERS' .. "\n")
 			f:write('# Line colors, skipping light cyan if nclass > 4' .. "\n")
 			f:write(line .. "\n")
 			f:write('# All black line colors, for testing what it may look like in B&W publication (commented out by default)' .. "\n")
 			f:write('#colors<-rep(1,nclass)' .. "\n")
 			f:write("\n")
-			f:write('# Set below to FALSE to do 1 plot per class (default is 1 combined plot)' .. "\n")
-			f:write('do_combined_plot=TRUE' .. "\n")
-			f:write('if ( do_combined_plot ) {' .. "\n")
-			f:write('  # Do just one combined plot for all classes (default)' .. "\n")
-			f:write("\n")
-			f:write('  # mfrow=c(1,1) == 1 rows, 1 columns of plots' .. "\n")
-			f:write('  # Ex: mfrow=c(3,2) == 3 rows, 2 columns of plots' .. "\n")
-			f:write('  # mar - A numerical vector of the form c(bottom, left, top, right) which gives the number of lines of margin to be specified on the four sides of the plot. The default is c(5, 4, 4, 2) + 0.1.' .. "\n")
-			f:write('  # This code for mar= tries to automatically adjust the margin depending on the longest variable name in varlab, otherwise using default margins lengthed a bit for the legend and axis labels.' .. "\n")
-			f:write('  # Note: In R Studio, when you "zoom" the legend may be cut off a tiny bit. You can adjust the final margin value (default 8) if you want, though the best margins for zoomed versus export image can be different.' .. "\n")
-			f:write('  #par(mfrow=c(1,1),mar=c(max(7,max(nchar(varlab))/1.3 + 2), 4.5, 4, 8) + 0.1)' .. "\n")
-			f:write('  par(mfrow=c(1,1),mar=c(max(7,max(nchar(varlab))/1.3 + 2), 4.5, 4, 2) + 0.1)' .. "\n")
-			f:write("\n")
-			f:write('  # NOTE: To remove the label at the top, change to "plot(...,main="")" keeping the rest the same. (Default is "' .. filename_outfile .. '" so you know which file this figure came from)' .. "\n")
-			f:write('  # main="filename" - label at top (default: filename)' .. "\n")
-			f:write('  # ylim=c(0,1) - limit for y-axis (default: 0-1.0)' .. "\n")
-			f:write('  # ylab="" - label for y-axis' .. "\n")
-			f:write('  # xlab="" - label for x-axis' .. "\n")
-			f:write('  # cex.axis=0.75 - Percentage size of font for variable names on x axis' .. "\n")
-			f:write('  # font.lab=2 - Bold the axis labels' .. "\n")
-			f:write('  # line=... - The call to title() uses a bit of code to try and automatically position the x axis label based on longest length of variable names' .. "\n")
-			f:write('  plot(0,0,ylim=c(0,1),xlim=c(1,nvar),col=0,ylab="' .. strloc["Conditional probability"] .. '", font.lab=2,xaxt="n",xlab="",main="' .. filename_outfile .. '")' .. "\n")
-			f:write('  axis(1,at=seq(1:nvar),labels=varlab,las=2,cex.axis=0.75,xlab="",xlim=c(1,nvar))' .. "\n")
-			f:write('  title(xlab="' .. strloc["Latent class indicator"] .. '", line=max(6,max(nchar(varlab))/1.35),font.lab=2)' .. "\n")
-			f:write("\n")
-			
-			f:write('  # PARAMETERS FOR EACH PLOTTED LINE' .. "\n")
-			f:write('  # Iterate over each class, adding the lines and points to the plot for each matrix' .. "\n")
-			f:write('  # lty -- line types: "blank", "solid", "dashed", "dotted", "dotdash", "longdash", "twodash"' .. "\n")
-			f:write('  # col -- colour, pch -- point symbol type, cex -- size of point symbols' .. "\n")
-			f:write('  # lwd -- line width' .. "\n")
-			f:write('  for(j in 1:nclass){' .. "\n")
-			local ylines -- array of matrixes with data points
-			if rt["citable"] then
-				ylines = { 'ciestimates_matrix', 'cilower2p5_matrix', 'ciupper2p5_matrix' }
-			else
-				f:write('# ERROR: CI VALUES MISSING' .. "\n")
-			end
-			if ylines then
-				for i,v in ipairs(ylines) do
-					if i == 1 then
-						f:write('    lines(x=rep(1:nvar),y=' .. v .. '[,j],lty="solid",lwd=2,col=colors[j])' .. "\n")
-						f:write('    points(x=rep(1:nvar),y=' .. v .. '[,j],lty="solid",lwd=2,col=colors[j],pch=j,cex=0.5)' .. "\n")
-					else
-						f:write('    lines(x=rep(1:nvar),y=' .. v .. '[,j],lty="dotted",col=colors[j])' .. "\n")
-						f:write('    points(x=rep(1:nvar),y=' .. v .. '[,j],lty="dotted",col=colors[j],pch=j,cex=0.5)' .. "\n")
-					end
-				end -- for ylines
-			end
-			f:write('  } # end for' .. "\n")
-			f:write("\n")
-			
-			--[[
-			f:write('  # LEGEND TEXT - edit legend.text to edit the text of the legend' .. "\n")
-			f:write('  # There should be values for each class #' .. "\n")
-			f:write('  # This is generated automatically, but can be edited manually here' .. "\n")
-			if rt["lcptable"] then
-				local lcpprecision = patterns_by_section_hash["BASED ON THE ESTIMATED MODEL"]["precision"] or 1
-				f:write('  # Paste together legend, adding in class names and LCP values' .. "\n")
-				local legend,class,lcpvalue,lcpstr
-				for class,lcpvalue in ipairs(rt["lcptable"]) do
-					lcpstr = string.format('%.' .. lcpprecision .. 'f%%', lcpvalue * 100)
-					if not legend then
-						legend = '"' .. strloc["Class"] .. ' ' .. class .. ' (' .. lcpstr .. ')"'
-					else
-						legend = legend .. ',"' ..strloc["Class"] .. ' ' .. class .. ' (' .. lcpstr .. ')"'
-					end
-				end -- for rt["lcptable"]
-				f:write(string.format("  legend.text<-c(%s)",legend) .. "\n")
-				f:write("\n")
-			else -- no lcp
-				f:write('  # Set legend to classnames' .. "\n")
-				f:write('  legend.text<-classnames' .. "\n")
-			end -- if rt["lcptable"] then
-			--]]
-			f:write("\n")
-			f:write('  # SET LEGEND - comment out "legend(...)" to disable legend' .. "\n")
-			f:write('  # bty="n" means no border or background, text.font=2 means bold' .. "\n")
-			f:write('  # You may use positions such as "topright" for the legend, but here we use x and y positioning along with "xpd = T" to position the legend outside of the plotting area' .. "\n")
-			f:write('  # Second call adds the coloured point symbols' .. "\n")
-			f:write('  #legend(x=nvar + 0.5, y=1,legend.text,text.font=2,bty="n",pch=rep(NA,nclass), xpd = T)' .. "\n")
-			f:write('  #legend(x=nvar + 0.5, y=1,rep("",nclass),text.font=2,bty="n",pch=rep(1:nclass),col=colors, xpd = T)' .. "\n")
-			f:write('  legend("topright",legend.text,text.font=2,bty="n",pch=rep(NA,nclass), xpd = T)' .. "\n")
-			f:write('  legend("topright",rep("",nclass),text.font=2,bty="n",pch=rep(1:nclass),col=colors, xpd = T)' .. "\n")
-			f:write("\n")
-			
-			-- Plots per class code
-			f:write('} else {' .. "\n")
-			f:write('  # Make a plot for each class' .. "\n")
-			f:write("\n")
-			f:write('  # mfrow - A vector of the form c(nr, nc). Subsequent figures will be drawn in an nr-by-nc array on the device by columns (mfcol), or rows (mfrow), respectively.' .. "\n")
-			f:write('  # mar - A numerical vector of the form c(bottom, left, top, right) which gives the number of lines of margin to be specified on the four sides of the plot. The default is c(5, 4, 4, 2) + 0.1.' .. "\n")
-			f:write('  # Ex: mfrow=c(3,2) == 3 rows, 2 columns of plots' .. "\n")
-			f:write('  par(mfrow=c(3,ceiling(nclass/3)), mar=c(5, 4, 4, 2) + 0.1)' .. "\n")
-			f:write("\n")
-			f:write('  # Iterate over each class, making both the plot and lines for each matrix' .. "\n")
-			f:write('  for(j in 1:nclass) {' .. "\n")
-			f:write('    # main=label - label at top of plot' .. "\n")
-			f:write('    # ylim=c(0,1) - limit for y-axis (default: 0-1.0)' .. "\n")
-			f:write('    # ylab="" - label for y-axis (default: blank)' .. "\n")
-			f:write('    # xlab="" - label for x-axis (default: blank)' .. "\n")
-			
-			--f:write('    label<-paste(classnames[j], "  (", round(lcp[j],1), ")", sep="")' .. "\n")
-			f:write('    label<-legend.text[j]' .. "\n")
-			f:write('    plot(0,0,ylim=c(0,1),xlim=c(1,nvar),col=0,ylab="",xaxt="n",xlab="",main=label)' .. "\n")
-			f:write('    axis(1,at=seq(1:nvar),labels=varlab,las=2,xlab="",xlim=c(1,nvar))' .. "\n")
-			local ylines -- array of matrixes with data points
-			if rt["citable"] then
-				ylines = { 'ciestimates_matrix', 'cilower2p5_matrix', 'ciupper2p5_matrix' }
-			else
-				f:write('# ERROR: CI VALUES MISSING' .. "\n")
-			end
-			if ylines then
-				for i,v in ipairs(ylines) do
-					if i == 1 then
-						f:write('    lines(x=rep(1:nvar),y=' .. v .. '[,j],lty="solid",col=colors[j])' .. "\n")
-					else
-						f:write('    lines(x=rep(1:nvar),y=' .. v .. '[,j],lty="dotted",col=colors[j])' .. "\n")
-					end
-				end -- for ylines
-			end
-			f:write('  } # end for' .. "\n")
-			f:write("\n")
-			f:write('} # end if do_combined_plot' .. "\n")
-			f:write("\n")
-			f:write('# Done auto-generated script' .. "\n")
-		end -- if if rt["cptable"] or rt["citable"]
+		end -- do
 		
+		f:write( '# Default x and y axis labels for CI matrixes' .. "\n" )
+		f:write( string.format('xlabel<-"%s"' .. "\n", strloc["Latent class indicator"]) )
+		f:write( string.format('ylabel<-"%s"' .. "\n", strloc["Conditional probability"]) )
+		f:write("\n")
+			
+		-- Read in parse_mplus_template.R to string, then output to file
+		local infile = io.input( rtemplatefilename )
+		if infile then -- io success
+			-- read in file to string
+			local instr = infile:read("*a")
+			if instr then
+				f:write( instr ) -- write template script to our output file
+			else
+				f:write( string.format("# WARNING: R template script [%s] appears to be blank\n", rtemplatefilename ) )
+			end
+			infile:close()
+		else
+			print( string.format("** WARNING: Could not open R template script [%s]", rtemplatefilename ) )
+			f:write( string.format("# WARNING: Could not open R template script [%s]\n", rtemplatefilename ) )
+			-- Non fatal error (do not exit prematurely)
+		end
+			
+		f:write('# Done auto-generated script' .. "\n")
 		f:close()
 		print( string.format("R script written to [%s]", filename) )
 	end -- for resultstable
@@ -1579,8 +1513,8 @@ if string.upper(flag_output_type) == "R" then
 -- # Output CSV tables
 
 else -- flag_output_type
-	if flag_verbosity > 0 then print('') end
-	if flag_verbosity > 1 then print("DEBUG: Making CSV file\n") end
+	if PM_flag_verbosity > 0 then print('') end
+	if PM_flag_verbosity > 1 then print("DEBUG: Making CSV file\n") end
 
 	-- If -o=NONE given then don't output a CSV file
 	if string.upper(outputfilename) == key_no_output then
@@ -1601,14 +1535,14 @@ else -- flag_output_type
 	end -- for _,rt
 	if not haveresults then
 		print('No results parsed to make into CSV table. Aborting.')
-		return -3 -- exit with error, though this may be by user request
+		return -5 -- exit with error, though this may be by user request
 	end -- if not haveresults
 
 	-- open CSV file for output
 	local f = io.output( outputfilename )
 	if not f then
-		print(string.format("** ERROR: Could not open output file [%s]", outputfilename))
-		return -4
+		print(string.format("** ERROR: Could not open CSV output file [%s]", outputfilename))
+		return -6
 	end
 	
 	-- ## Locally Defined Functions ##
@@ -1700,7 +1634,7 @@ else -- flag_output_type
 	
 	-- Do LCM (Latent Class Model Selection) table, which is formatted a bit differently as
 	-- each is just a single value per file (instead of per class per file)
-	if mux_flags["get_lcm"] then
+	if PM_mux_flags["get_lcm"] then
 		local line
 		local header_string = strloc[ "Latent Class Model Selection" ]
 		
